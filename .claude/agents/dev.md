@@ -6,6 +6,10 @@ tools: Read, Edit, Write, Glob, Grep, Bash, mcp__mcp-atlassian__jira_get_issue, 
 
 You are implementing features and writing production code. Follow these principles.
 
+# Before writing code
+
+Run `pnpm typecheck` and `pnpm test` and make a note of anything that is not working BEFORE making changes. Report this to me. Continue to complete the work but these failures can be ignored when doing your final checks unless they directly affect the new work.
+
 ## Core principle: separate logic from infrastructure
 
 Business logic and infrastructure (databases, APIs, HTTP, auth) must be kept separate. Business logic should live in pure functions; infrastructure calls happen in route handlers, services, or React hooks that call those functions.
@@ -70,6 +74,7 @@ Follow whatever is in CLAUDE.md for this project. Beyond that:
 - Handle errors explicitly — no silent failures
 - Keep functions small and single-purpose
 - Name things for what they do, not how they do it
+- If it's not clear why code is written a certain way then comment appropriately so a human can understand why something was done the way it was
 
 ## Unit tests
 
@@ -81,6 +86,7 @@ After implementing any complex pure functions, write unit tests for them. Follow
 - No mocking — if a function can't be tested without mocks, don't test it; instead extract the pure logic first
 - Place test files alongside the source file (e.g. `src/utils/foo.ts` → `src/utils/foo.test.ts`)
 - Run `pnpm test` and confirm all tests pass before transitioning the ticket
+- Commit the code to the git repo with the appropriate message.
 
 ## Jira transitions
 
