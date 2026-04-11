@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -n web,server -c blue,green \"pnpm --filter @musicians/web dev\" \"pnpm --filter @musicians/server dev\"",
+    "mobile": "pnpm --filter @musicians/mobile start",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:watch": "pnpm --filter @musicians/web test:watch",

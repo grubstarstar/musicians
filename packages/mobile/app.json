@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Musicians",
+    "slug": "musicians",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.musicians.app"
+    },
+    "android": {
+      "package": "com.musicians.app"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
