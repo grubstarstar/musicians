@@ -10,8 +10,9 @@
 - pnpm workspace — packages live under `packages/*`
 - `@musicians/web` — React + Vite frontend (`packages/web/`)
 - `@musicians/server` — Hono backend (`packages/server/`)
+- `@musicians/mobile` — Expo + React Native mobile app (`packages/mobile/`) — see [`docs/expo-monorepo.md`](docs/expo-monorepo.md) before touching it, Expo/Metro/pnpm have sharp edges that are easy to "fix" wrong
 - Root `package.json` holds only shared dev tooling (tsc, eslint, concurrently) and delegates scripts via `pnpm --filter` / `pnpm -r`
-- Run everything from the repo root: `pnpm dev`, `pnpm build`, `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm seed`
+- Run everything from the repo root: `pnpm dev`, `pnpm build`, `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm seed`, `pnpm mobile`
 
 ## UI: Material UI (MUI) v6
 - Use MUI components exclusively (`@mui/material`)
