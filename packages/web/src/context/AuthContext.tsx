@@ -18,11 +18,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setUser(data ?? null))
-      .catch(() => setUser(null))
-      .finally(() => setIsLoading(false));
+    async function checkAuth() {
+      try {
+        const r = await fetch('/api/auth/me');
+        const data = r.ok ? await r.json() : null;
+        setUser(data ?? null);
+      } catch {
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    checkAuth();
   }, []);
 
   async function login(username: string, password: string) {

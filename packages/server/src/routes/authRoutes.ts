@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import bcrypt from 'bcrypt';
-import { db, User } from '../db.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../db.js';
+import { users } from '../schema.js';
 import { signToken, verifyToken, buildSetCookieHeader, buildClearCookieHeader, getTokenFromCookie } from '../auth.js';
 
 const authRoutes = new Hono();
@@ -13,11 +15,11 @@ authRoutes.post('/login', async (c) => {
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as User | undefined;
+  const [user] = await db.select().from(users).where(eq(users.username, username));
 
   if (!user) {
     // Prevent timing attacks: compare against a dummy hash
-    await bcrypt.compare(password, '$2b$12$invalidhashfortimingattackprevention00000000000000000000');
+    await bcrypt.compare(password, '$2b$12$KIXJhqtcnFMBpkMzL2CXS.kdwhFhXYNAqPL3GXrVTGUDXB9eZ2Lby');
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
