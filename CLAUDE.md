@@ -1,5 +1,72 @@
 # Musicians — Project Standards
 
+##  IMPORTANT NOTE
+This is a git branch specifically for preparing for a React Native interview. I haven't done much React Native for the last 4 years and so I am catching up on things and using `@musicians/mobile` package in this monorepo as a playground. We can ignore the original purpose of the app for the sake of this.
+
+As we discuss things, write VERY succinct bullet point notes for final quick revision to a docs/revision.md file for anything we talk about that I should go back to. Key points to know for the interview. 
+
+Use a docs/revision-progress.md to describe how far I've gone through my revision. Use checkboxes for each point.
+
+Here's the revision plan. I want you to help build some examples for these concepts so I can see them working for real:
+
+Anything that says "new to me" means you need to teach me concepts along the way because I am new to this area.
+
+### Day 1 — New Architecture concepts (new to me)
+
+- Read the official RN architecture docs
+  - https://reactnative.dev/architecture/landing-page
+  - https://reactnative.dev/architecture/fabric-renderer
+  - https://reactnative.dev/architecture/threading-model
+- Understand JSI vs Bridge, Fabric vs old renderer, TurboModules vs NativeModules
+- Know what Codegen does (generates type-safe native bindings from TS specs)
+
+### Day 2 — Expo Router hands-on (new to me)
+
+- Build a small app with file-based routing: tabs, stack, dynamic routes, layouts
+- Practice useRouter, useLocalSearchParams, Link
+- Understand the _layout pattern and route groups
+
+### Day 3 — React 18 in RN + Hermes (new to me)
+
+- How concurrent rendering applies to RN now
+- useTransition, useDeferredValue, Suspense for data fetching
+- https://react.dev/blog/2022/03/29/react-v18#what-is-concurrent-react
+- Why Hermes matters
+
+### Day 4 — Ecosystem catch-up (new to me)
+
+- React Navigation v7 static API (if they're not using Expo Router)
+- NativeWind v4 basics
+- Scan reactnative.directory for New Arch compatibility indicators
+
+### Day 5 — Refresh fundamentals + interview prep
+
+- Performance patterns: FlatList vs FlashList (FlashList from Shopify is now widely preferred)
+- useAnimatedStyle / Reanimated 3, narrowed scope: shared values, one gesture-driven animation
+- Common interview Qs: bridge vs JSI, how does RN render, why Fabric, how do you handle native modules
+
+### Day 6 — Day-to-day feature building
+
+The stuff you actually touch every day shipping features. Less theory, more muscle memory.
+
+- Lists & virtualization: `FlatList` / `SectionList` basics, `keyExtractor`, `renderItem`, `getItemLayout`, why virtualization matters, when `.map()` inside `ScrollView` is fine vs when it kills perf
+- Forms & keyboard: `TextInput` controlled state, `KeyboardAvoidingView` (iOS/Android differ), auto-focus, dismiss-on-tap, `react-hook-form`
+- Data fetching: TanStack Query (`useQuery`, `useMutation`, cache invalidation, loading/error states)
+- State management survey: Zustand (dominant), Redux Toolkit (legacy but common), Context for small stuff — when to reach for each
+- Styling & layout: RN flexbox defaults (column not row), `StyleSheet.create` vs inline, `Platform.select`, `useWindowDimensions`
+- Images: `expo-image` vs built-in `Image` — caching, placeholders, priority
+- Platform differences: `Platform.OS`, `.ios.tsx`/`.android.tsx` file extensions, safe area gotchas
+- Testing: React Native Testing Library (RNTL) basics; Detox for E2E (rarely asked)
+- Debugging: Flipper is dead; current = RN DevTools + Reactotron
+
+(My notes for things that we might need in day 6 too, correct me if these aren't relevant)
+- ScrollView
+- ListView?
+- expo-constants
+- expo-linking
+- expo-router
+- expo-status-bar
+
 ## Stack
 - **Frontend**: React 19 + Vite + TypeScript
 - **Backend**: Hono + Node.js + TypeScript

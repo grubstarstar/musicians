@@ -18,6 +18,13 @@ of that is configured or exercised in this repo. Issue #33013 (referenced below)
 specifically fixed a monorepo bug in the *iOS native* build pipeline, not the dev
 server, so expect to learn more when EAS is set up.
 
+**Note on this branch.** The `experimental` branch is being used as a React Native
+interview-prep playground. `@musicians/mobile` now uses **expo-router** (file-based
+routing) — adopted on Day 2 of the revision plan. Earlier iterations of this doc
+described the non-router `"main": "index.ts"` + `App.tsx` setup; that history has
+been trimmed out of the current guidance below. Older commits still show the
+pre-router layout if you need the archaeology.
+
 ## TL;DR
 
 - **Use the current Expo SDK** (as of writing: SDK 55). Older SDKs predate Expo's
@@ -29,12 +36,12 @@ server, so expect to learn more when EAS is set up.
 - **Don't set `nodeLinker: hoisted`** unless you're forced to. From SDK 54+, Expo
   supports pnpm's default isolated linker. Hoisted works but sacrifices the whole
   benefit of pnpm for the rest of the workspace.
-- **Don't set `"main": "expo/AppEntry.js"`** in `packages/mobile/package.json`. It
-  was the Expo convention for years and old tutorials still recommend it, but the
-  file contains a hardcoded `import App from '../../App'` that only works in a
-  non-monorepo layout. Use a custom `index.ts` that calls `registerRootComponent(App)`
-  and set `"main": "index.ts"` instead. (See "Gotcha: AppEntry.js" below for the
-  full story.)
+- **Use `"main": "expo-router/entry"`** in `packages/mobile/package.json`. We're
+  on expo-router for file-based routing, which ships its own entry file that sets
+  up `registerRootComponent`, URL handling, and mounts the `app/` directory as the
+  route graph. Don't use `"expo/AppEntry.js"` (legacy, broken in monorepos — see
+  "Gotcha: AppEntry.js" below) and don't hand-write an `index.ts` + `App.tsx` pair
+  (that's the non-router pattern the repo used briefly before the Day 2 migration).
 - **Bundle URLs are relative to the workspace root**, not the package. When
   debugging Metro with `curl`, hit
   `http://localhost:8081/packages/mobile/index.bundle?platform=ios&dev=true`, not
@@ -63,13 +70,18 @@ No `nodeLinker` override. pnpm stays in its default isolated mode.
 ```json
 {
   "name": "@musicians/mobile",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "scripts": { "start": "expo start" },
   "dependencies": {
     "expo": "~55.0.14",
+    "expo-constants": "~55.0.13",
+    "expo-linking": "~55.0.12",
+    "expo-router": "~55.0.12",
     "expo-status-bar": "~55.0.5",
     "react": "19.2.0",
-    "react-native": "0.83.4"
+    "react-native": "0.83.4",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2"
@@ -83,16 +95,32 @@ Notes:
   package's scope via normal transitive resolution — Expo handles it.
 - React version must exactly match the pin in the matching Expo template. Check
   `npm view expo-template-blank-typescript@sdk-<N> dependencies` before bumping.
+- `expo-router`, `react-native-screens`, `react-native-safe-area-context`,
+  `expo-linking`, and `expo-constants` are required peers for expo-router. Install
+  them via `expo install` (not plain `pnpm add`) so Expo picks SDK-compatible pins
+  from its compatibility matrix.
 
-### `packages/mobile/index.ts`
-```ts
-import { registerRootComponent } from 'expo';
-import App from './App';
-registerRootComponent(App);
-```
-This is our entry. `packages/mobile/package.json` has `"main": "index.ts"` so Metro
-starts bundling here. The older `"main": "expo/AppEntry.js"` pattern does NOT work
-in a monorepo — see "Gotcha: AppEntry.js" below.
+### Entry point: `expo-router/entry`
+
+We don't have a hand-written `index.ts` or `App.tsx` — `"main": "expo-router/entry"`
+in `packages/mobile/package.json` points Metro at a file shipped inside the
+`expo-router` package. That file:
+
+1. Calls `registerRootComponent` under the hood (same as the non-router pattern)
+2. Sets up URL handling and deep linking (that's why you also need `scheme` in
+   `app.json` and the `expo-router` plugin in `app.json`'s `plugins` array)
+3. Mounts Expo Router's `ExpoRoot` component, which walks a build-time-generated
+   map of the `app/` directory and constructs the navigation graph for you
+
+Consequence: **the filesystem layout inside `packages/mobile/app/` IS the app
+entry point**. Adding a new route is just adding a file — no imports, no
+`registerRootComponent` edits, no navigator registration. See the Expo Router
+section of the RN revision docs (`docs/revision.md`) for the routing conventions.
+
+The older `"main": "expo/AppEntry.js"` pattern does NOT work in a monorepo — see
+"Gotcha: AppEntry.js" below. The previous non-router `"main": "index.ts"` + hand
+-written `App.tsx` pattern worked fine but has been removed in favour of
+expo-router.
 
 ### No `metro.config.js`
 `expo/metro-config`'s `getDefaultConfig()` auto-detects monorepos on SDK 52+. If
@@ -108,7 +136,12 @@ manually. Those were the pre-SDK-52 monorepo workaround and they break SDK 52+
 auto-configuration.
 
 ### `packages/mobile/app.json`
-Standard Expo config. Nothing monorepo-specific.
+Standard Expo config plus two things expo-router requires:
+- `"scheme": "musicians"` — needed for deep linking. Expo Router refuses to start
+  without it.
+- `"plugins": ["expo-router"]` — `expo install expo-router` adds this automatically
+  on first install.
+Otherwise nothing monorepo-specific.
 
 ### `eslint.config.js`
 `packages/mobile/**` is in the global ignore list. Expo projects have their own
@@ -204,17 +237,19 @@ you pointed at).
 
 **The three common values of `main` for Expo apps:**
 
-1. `"main": "index.ts"` — **what we use.** You write your own `index.ts` that
-   imports `App` (a sibling file) and calls `registerRootComponent(App)`. Both
-   files live inside `packages/mobile/`, so Metro's resolution stays within the
-   package and works fine in any layout.
-
-2. `"main": "expo-router/entry"` — used by apps that have adopted expo-router.
-   It's a wrapper shipped by the `expo-router` package that sets up file-based
-   routing and eventually renders your `app/` directory. We're not on
-   expo-router, so this doesn't apply to us today — but it's what the canonical
+1. `"main": "expo-router/entry"` — **what we use.** A wrapper shipped by the
+   `expo-router` package that sets up `registerRootComponent`, URL handling,
+   and mounts the `app/` directory as the route graph. No hand-written entry
+   file needed. Requires `scheme` in `app.json` and the `expo-router` plugin.
+   This is what the canonical
    [byCedric/expo-monorepo-example](https://github.com/byCedric/expo-monorepo-example)
-   uses, and it's what you'd adopt if we ever migrate.
+   also uses.
+
+2. `"main": "index.ts"` — what this repo used before adopting expo-router on
+   the `experimental` branch. You hand-write an `index.ts` that imports `App`
+   (a sibling file) and calls `registerRootComponent(App)`. Both files live
+   inside `packages/mobile/`, so Metro's resolution stays within the package
+   and works in any layout. Valid, but unnecessary if you're using expo-router.
 
 3. `"main": "expo/AppEntry.js"` — **the legacy pattern, do not use in a monorepo.**
    This was the default in Expo's blank template for many SDK versions and is
