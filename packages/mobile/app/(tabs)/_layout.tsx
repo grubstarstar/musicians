@@ -44,7 +44,19 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="concurrent"
-        options={{ title: "Day 3 · React 18", tabBarIcon: makeIcon("⚡️") }}
+        options={{
+          title: "Day 3 · React 18",
+          tabBarIcon: makeIcon("⚡️"),
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="daily"
+        options={{
+          title: "Day 6 · Daily",
+          tabBarIcon: makeIcon("🛠️"),
+          headerShown: false,
+        }}
       />
     </Tabs>
   );

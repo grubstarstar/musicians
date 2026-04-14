@@ -1,82 +1,57 @@
 # Revision Progress
 
-Track of how far through the interview revision plan we've got.
+What's left to cover before the interview. Pragmatic stuff only — the deep-dive tangents have been dropped. Grouped by topic, not by day.
 
 ---
 
-## Day 1 — New Architecture
+## Readings (still owed)
 
-- [x] Old architecture: Bridge, threads, problems
-- [x] JSI: what it is, sync vs async, engine-agnostic
-- [x] Fabric: C++ shadow tree, concurrent React, sync layout reads
-- [x] TurboModules: lazy, typed, Codegen
-- [x] Codegen: TS spec → generated C++/Obj-C/Java headers
-- [x] Shadow tree vs Virtual DOM distinction
-- [x] Runtime globals (`nativeFabricUIManager` etc.) — seen live in app
-- [x] Gotcha: `__turboModuleProxy` absent under bridgeless mode
-- [x] Why RN globals aren't in TS types (private internals)
-- [x] Expo Go vs development build
-- [x] Interview one-liner memorised
-- [ ] Read official docs: architecture landing, Fabric, threading model
-- [ ] Write a TurboModule TS spec file + see what Codegen produces (optional deepening)
+- [ ] Official RN architecture docs: landing, Fabric, threading model
+- [ ] React 18 blog post — `https://react.dev/blog/2022/03/29/react-v18`
 
-## Day 2 — Expo Router
+## Lists & performance
 
-- [x] What file-based routing is + how it differs from imperative React Navigation
-- [x] File conventions: `[id]`, `index`, `_layout`, `(group)`, `+not-found`
-- [x] `_layout.tsx` pattern — layouts as wrappers, composition down the tree
-- [x] `<Link>` declarative navigation
-- [x] `useRouter()` imperative API
-- [x] `useLocalSearchParams()` in dynamic routes
-- [x] Route groups — `(tabs)` invisible in URL
-- [x] Nested stack inside a tab — tab bar persists
-- [x] Entry point wiring for pnpm monorepo (`expo-router/entry`, scheme, peers)
-- [x] Built working example in `packages/mobile/app/`
+- [x] FlashList — install, swap into existing `daily/lists.tsx` demo, compare against FlatList
+- [x] Slow-screen-on-mount story: virtualize → defer with `InteractionManager` → `memo` → release build
+- [x] General perf gotchas: inline styles/arrows breaking `memo`, missing `keyExtractor`, `expo-image` vs `<Image>`
+- [x] Profiling workflow: React DevTools Profiler flame graph, "why did this render", Hermes sampling profiler for JS hot spots — enough to answer "is memo actually helping?"
+- [x] Debugging: RN DevTools (bundled 0.76+), Reactotron. Flipper is dead.
 
-## Day 3 — React 18 in RN + Hermes
+## Animation
 
-- [x] Concurrent rendering model — render phase vs commit, interruptible renders, scheduler yield points between components
-- [x] `useTransition` — urgent vs deferred state, `isPending`, stale content dimmed, built working tab-switch demo
-- [x] Why useTransition can't help pathological single-`useMemo` components — scheduler yields between components, not inside one
-- [x] Why Hermes matters — bytecode precompile, startup win, AOT interpreter, JSI co-design, OTA bytecode via EAS
-- [ ] `useDeferredValue` — conceptually covered (same mechanism, wraps value not setter), not yet used in code
-- [ ] Suspense for data fetching — conceptually covered (throws promise, fallback), not yet used in code
-- [ ] Read React 18 blog post
+- [x] Reanimated 3: shared values + ONE gesture-driven animation (gesture-handler → shared value → `useAnimatedStyle`)
 
-**Low priority — only if everything else is done**: rebuild the concurrent demo with
-distributed per-row components (30 memoized rows, each doing a chunk of busywork)
-so React's yield points kick in between rows and rapid tab-switches can actually
-be interrupted. Current demo uses one fat `useMemo`, which is deliberately
-pathological for teaching the limit but doesn't show interruption working.
+## Styling, layout, platform
 
-## Day 4 — Ecosystem catch-up
+- [x] Flexbox defaults (column not row), `StyleSheet.create` vs inline, `Platform.select`, `useWindowDimensions`
+- [x] `expo-image` vs built-in `Image` — caching, placeholders, priority
+- [x] Platform differences: `Platform.OS`, `.ios.tsx` / `.android.tsx` file extensions, safe area gotchas
 
-- [x] Native-module-single-copy constraint (why peer deps exist)
-- [x] Expo Go bundled natives vs dev build
-- [x] `react-native-screens` — what it does, when it's needed
-- [x] `react-native-gesture-handler` — native gesture recognition, combo with Reanimated
-- [x] `react-native-reanimated` — worklets, shared values, UI-thread animations
-- [x] `react-native-safe-area-context` — insets hook, double-inset gotcha
-- [x] `react-native-svg` — vector rendering, when to use vs Skia vs Image
-- [ ] React Navigation v7 static API
-- [ ] NativeWind v4 basics
-- [ ] reactnative.directory — New Arch compatibility scan
+## Navigation alternative
 
-## Day 5 — Fundamentals refresh + interview prep
+- [ ] React Navigation v7 static API — enough to talk about it if they're not using Expo Router
 
-- [ ] FlatList vs FlashList — when + why
-- [ ] Reanimated 3 — shared values + one gesture-driven animation
-- [ ] Interview Qs: bridge vs JSI, why Fabric, how RN renders, native modules
+## Testing
 
-## Day 6 — Day-to-day feature building
+- [ ] React Native Testing Library basics — render, query, fire events. Detox is rarely asked
 
-- [ ] Lists & virtualization: `FlatList`, `SectionList`, `keyExtractor`, `getItemLayout`, `.map()` vs virtualized
-- [ ] Forms: `TextInput` controlled state, `KeyboardAvoidingView`, auto-focus, dismiss-on-tap
-- [ ] `react-hook-form` basics
-- [ ] TanStack Query: `useQuery`, `useMutation`, cache invalidation
-- [ ] State management survey: Zustand, Redux Toolkit, Context — when to use each
-- [ ] Styling & layout: flexbox defaults, `StyleSheet.create`, `Platform.select`, `useWindowDimensions`
-- [ ] Images: `expo-image` vs `Image` — caching, placeholders, priority
-- [ ] Platform differences: `Platform.OS`, `.ios.tsx`/`.android.tsx`, safe area gotchas
-- [ ] Testing: RNTL basics
-- [ ] Debugging: RN DevTools, Reactotron (Flipper is dead)
+## EAS — ship a build end-to-end
+
+- [ ] EAS Build: cloud builds vs `expo run:ios --configuration Release` — when to pick each
+- [ ] `eas.json` profiles: development / preview / production, simulator vs device builds
+- [ ] Dev client vs Expo Go — when Expo Go stops being enough, `expo-dev-client`
+- [ ] `expo prebuild` — continuous native generation, when to commit `ios/` / `android/`
+- [ ] EAS Update — OTA for JS + assets, runtime versions, what forces a binary bump
+- [ ] EAS Submit — App Store Connect / Play Console pipeline, ASC API keys
+- [ ] `app.json` / `app.config.js` dynamic config, env-driven builds, `expo-constants`
+- [ ] EAS + pnpm monorepo gotchas
+
+## Interview rehearsal
+
+- [ ] Out-loud one-liners: bridge vs JSI, why Fabric, how RN renders, native modules / TurboModules, how you'd ship a build
+
+---
+
+## Already covered (not revisiting)
+
+New Architecture (JSI / Fabric / TurboModules / Codegen), Expo Router, React 18 concurrent rendering (`useTransition`, `useDeferredValue`), Hermes, Suspense + `use()` conceptually, ecosystem libs (screens, gesture-handler, reanimated, safe-area-context, svg), FlatList / SectionList basics, `memo` / `useMemo` / `useCallback`, forms (TextInput, focus chain, KeyboardAvoidingView, react-hook-form), TanStack Query, Zustand vs Context.

@@ -11,6 +11,8 @@ Here's the revision plan. I want you to help build some examples for these conce
 
 Anything that says "new to me" means you need to teach me concepts along the way because I am new to this area.
 
+NOTE - When dicsussing things keep it fairly brief. We don't need to go into under the hood detail, just keep it practical and aimed at things that might appear in the interview.
+
 ### Day 1 — New Architecture concepts (new to me)
 
 - Read the official RN architecture docs
@@ -62,10 +64,29 @@ The stuff you actually touch every day shipping features. Less theory, more musc
 (My notes for things that we might need in day 6 too, correct me if these aren't relevant)
 - ScrollView
 - ListView?
+- memo
+- general performance gatchas
+- debugging in general
+- debugging performance
 - expo-constants
 - expo-linking
 - expo-router
 - expo-status-bar
+
+### Day 7 — Learn EAS better
+
+Everything past `expo start`. The build + distribution side of an Expo project.
+
+- **EAS Build** — `eas build --profile <name> --platform ios|android`. Cloud builds vs `expo run:ios --configuration Release` local builds — when to pick each
+- **`eas.json` profiles** — `development`, `preview`, `production`. What each is for, simulator vs device builds (`"ios": { "simulator": true }`), distribution channels
+- **Dev client vs Expo Go** — when you outgrow Expo Go, what a dev client actually is, `expo-dev-client` package
+- **Prebuild + bare/managed** — `expo prebuild` generates `ios/`/`android/`, what "continuous native generation" means, when to commit the native folders
+- **EAS Update** — OTA for JS + assets. `eas update --branch <name>`. Runtime versions gating compatibility. Why native changes force a binary bump
+- **EAS Submit** — `eas submit` to App Store Connect / Play Console, ASC API keys, service accounts
+- **Credentials management** — `eas credentials`, auto-managed vs manual, how EAS stores signing keys
+- **app.json / app.config.js** — dynamic config, env-driven builds, `expo-constants` `Constants.expoConfig`
+- **Build caching, monorepo gotchas** — EAS + pnpm workspaces, how it resolves the mobile package
+- **Interview angle** — what an RN team expects you to own: can you ship a build end-to-end without hand-holding?
 
 ## Stack
 - **Frontend**: React 19 + Vite + TypeScript
