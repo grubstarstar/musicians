@@ -66,6 +66,9 @@ packages/
 - No `any` types
 - Interfaces for all DB row shapes, defined alongside schema in `packages/server/src/schema.ts`
 
+## Plans
+Long-form roadmaps and multi-ticket plans live in `plans/` at the repo root. Check there for context before starting work on large initiatives.
+
 ## Workflow
 Work is tracked in Jira. Use the `mcp__mcp-atlassian__*` MCP tools for all Jira interactions — never hit the Jira API directly.
 
