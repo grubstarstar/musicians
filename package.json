@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -n web,server -c blue,green \"pnpm --filter @musicians/web dev\" \"pnpm --filter @musicians/server dev\"",
-    "mobile": "pnpm --filter @musicians/mobile start",
+    "mobile": "pnpm --filter @musicians/mobile",
+    "mobile:start": "pnpm mobile start",
+    "mobile:expo": "pnpm mobile exec expo",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:watch": "pnpm --filter @musicians/web test:watch",
@@ -28,7 +30,10 @@
       "bcrypt",
       "better-sqlite3",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "react-dom": "19.2.0"
+    }
   },
   "packageManager": "pnpm@10.29.1+sha512.48dae233635a645768a3028d19545cacc1688639eeb1f3734e42d6d6b971afbf22aa1ac9af52a173d9c3a20c15857cfa400f19994d79a2f626fcc73fccda9bbc"
 }

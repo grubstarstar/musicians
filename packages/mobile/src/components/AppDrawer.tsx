@@ -1,0 +1,112 @@
+import type { DrawerContentComponentProps } from "@react-navigation/drawer";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  CONTEXT_LABELS,
+  useUser,
+  type UserContextType,
+} from "../user/UserContext";
+
+export function AppDrawer(props: DrawerContentComponentProps) {
+  const { user, currentContext, setCurrentContext } = useUser();
+  const displayName = user.firstName ?? user.username;
+  const showSwitcher = user.availableContexts.length > 1;
+
+  function handleSelect(next: UserContextType) {
+    setCurrentContext(next);
+    props.navigation.closeDrawer();
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.name}>{displayName}</Text>
+        <Text style={styles.username}>@{user.username}</Text>
+      </View>
+
+      {showSwitcher && (
+        <View>
+          <Text style={styles.sectionLabel}>Using app as</Text>
+          {user.availableContexts.map((c) => {
+            const selected = c === currentContext;
+            return (
+              <TouchableOpacity
+                key={c}
+                style={styles.row}
+                onPress={() => handleSelect(c)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+              >
+                <View style={[styles.radio, selected && styles.radioSelected]}>
+                  {selected && <View style={styles.radioDot} />}
+                </View>
+                <Text style={styles.rowLabel}>{CONTEXT_LABELS[c]}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      <View style={styles.spacer} />
+
+      <TouchableOpacity
+        style={styles.logout}
+        onPress={() => {
+          console.log("logout pressed (stub)");
+          props.navigation.closeDrawer();
+        }}
+      >
+        <Text style={styles.logoutLabel}>Log out</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0f0f11",
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+  },
+  header: { marginBottom: 32 },
+  name: { color: "#fff", fontSize: 22, fontWeight: "700" },
+  username: { color: "#7a7a85", fontSize: 14, marginTop: 2 },
+  sectionLabel: {
+    color: "#7a7a85",
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  radio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: "#7a7a85",
+    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioSelected: { borderColor: "#6c63ff" },
+  radioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#6c63ff",
+  },
+  rowLabel: { color: "#fff", fontSize: 16 },
+  spacer: { flex: 1 },
+  logout: {
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#2a2a30",
+  },
+  logoutLabel: { color: "#ff6b6b", fontSize: 16, fontWeight: "600" },
+});

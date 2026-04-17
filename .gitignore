@@ -30,6 +30,9 @@ dist-ssr
 node_modules
 dist
 
+# Environment variables
+.env
+
 # SQLite database
 musicians.db
 musicians.db-wal

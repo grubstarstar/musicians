@@ -11,7 +11,7 @@ future contributors (human or AI) who open the mobile package and wonder why thi
 look the way they do — especially anything that would otherwise be mistaken for "that
 looks wrong, let me clean it up."
 
-**What this doc covers:** the dev-server / Metro bundler path (the `pnpm mobile`
+**What this doc covers:** the dev-server / Metro bundler path (the `pnpm mobile:start`
 workflow and what Expo Go / simulators use). **What it doesn't cover yet:** EAS
 builds, native iOS/Android Xcode/Gradle integration, or production bundling — none
 of that is configured or exercised in this repo. Issue #33013 (referenced below)
@@ -120,7 +120,7 @@ mobile lint later, it should live in a separate ESLint config block scoped to
 ## How to verify it works
 
 1. Install: `pnpm install` from the repo root.
-2. Boot the dev server: `pnpm mobile` from the repo root (alias for
+2. Boot the dev server: `pnpm mobile:start` from the repo root (alias for
    `pnpm --filter @musicians/mobile start`). Running `pnpm start` from inside
    `packages/mobile/` also works; the root alias is just the project convention.
 3. Smoke-test the bundle without a simulator:

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mcp-atlassian": {
+      "command": "sh",
+      "args": ["-c", "set -a && . ./.env && set +a && exec uvx mcp-atlassian"]
+    }
+  }
+}
