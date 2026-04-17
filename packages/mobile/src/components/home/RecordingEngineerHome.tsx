@@ -9,8 +9,8 @@ const PROJECTS = [
 ];
 
 const STUDIO_BOOKINGS = [
-  { day: "WED", time: "2pm", room: "Room A" },
-  { day: "THU", time: "10am", room: "Room B" },
+  { datetime: new Date(2026, 4, 6), room: "Room A" },
+  { datetime: new Date(2026, 4, 7), room: "Room B" },
 ];
 
 export function RecordingEngineerHome() {
@@ -33,8 +33,7 @@ export function RecordingEngineerHome() {
       <Text style={styles.sectionTitle}>Studio bookings</Text>
       <TimelineList
         items={STUDIO_BOOKINGS.map((b) => ({
-          label: b.day,
-          sublabel: b.time,
+          eventDatetime: b.datetime,
           content: (
             <View>
               <Text style={styles.cardTitle}>{b.room}</Text>

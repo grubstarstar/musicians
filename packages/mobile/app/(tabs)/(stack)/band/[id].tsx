@@ -1,5 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ChipRow } from "../../../../src/components/home/ChipRow";
@@ -7,11 +9,16 @@ import { CollapsibleSection } from "../../../../src/components/CollapsibleSectio
 import { TimelineList } from "../../../../src/components/home/TimelineList";
 import { TrackList } from "../../../../src/components/band/TrackList";
 import { mockBands } from "../../../../src/data/mockBands";
+import { useImageColors } from "../../../../src/hooks/useImageColors";
 
 export default function BandScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const band = mockBands[id];
+  const { background, textColor } = useImageColors(
+    band?.image ?? "",
+    band?.color ?? "#0f0f11"
+  );
 
   if (!band) {
     return (
@@ -22,38 +29,64 @@ export default function BandScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: background }]}>
       {/* Hero banner */}
-      <View style={[styles.hero, { backgroundColor: band.color }]}>
+      <View style={styles.heroWrapper}>
+        <Image
+          source={{ uri: band.image }}
+          style={[styles.hero, { backgroundColor: band.color }]}
+        />
+        <LinearGradient
+          locations={[0, 0.3, 0.7]}
+          colors={["rgba(0,0,0,0)", `${background}80`, background]}
+          style={styles.heroGradient}
+        />
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={36} color="#fff" />
         </Pressable>
-        <Text style={styles.heroName}>{band.name}</Text>
+        <Text style={[styles.heroName, { color: textColor }]}>{band.name}</Text>
       </View>
 
       {/* Members */}
-      <CollapsibleSection title="Members">
+      <CollapsibleSection
+        title="Members"
+        textStyleOverride={{ color: textColor }}
+      >
         <ChipRow chips={band.members.map((m) => ({ label: m.name }))} />
       </CollapsibleSection>
 
       {/* Tracks */}
       {band.tracks.length > 0 && (
-        <CollapsibleSection title="Tracks">
+        <CollapsibleSection
+          title="Tracks"
+          textStyleOverride={{ color: textColor }}
+        >
           <TrackList tracks={band.tracks} />
         </CollapsibleSection>
       )}
 
-      {/* Upcoming gigs */}
-      {band.gigs.length > 0 && (
-        <CollapsibleSection title="Upcoming gigs">
+      {/* Upcoming events */}
+      {band.events.length > 0 && (
+        <CollapsibleSection
+          title="Upcoming events"
+          textStyleOverride={{ color: textColor }}
+        >
           <TimelineList
-            items={band.gigs.map((g) => ({
-              label: g.day,
-              sublabel: g.date,
+            items={band.events.map((e) => ({
+              eventDatetime: e.datetime,
               content: (
                 <View>
-                  <Text style={styles.gigVenue}>{g.venue}</Text>
-                  <Text style={styles.gigDoors}>Doors {g.doors}</Text>
+                  <View style={styles.eventHeader}>
+                    <Text style={styles.eventVenue}>{e.venue}</Text>
+                    {e.type === "rehearsal" && (
+                      <View style={styles.rehearsalBadge}>
+                        <Text style={styles.rehearsalBadgeText}>Rehearsal</Text>
+                      </View>
+                    )}
+                  </View>
+                  {e.doors && (
+                    <Text style={styles.eventDoors}>Doors {e.doors}</Text>
+                  )}
                 </View>
               ),
             }))}
@@ -66,22 +99,35 @@ export default function BandScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f0f11" },
-  hero: {
+  heroWrapper: {
     height: 200,
     justifyContent: "flex-end",
     padding: 20,
     marginBottom: 24,
   },
+  hero: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  heroGradient: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 160,
+    zIndex: 1,
+  },
   heroName: {
     color: "#fff",
     fontSize: 32,
     fontWeight: "800",
+    zIndex: 2,
   },
   backBtn: {
     position: "absolute",
     top: 52,
     left: 16,
     borderRadius: 32,
+    zIndex: 2,
   },
   backText: {
     color: "#fff",
@@ -95,6 +141,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   notFoundText: { color: "#7a7a85", fontSize: 16 },
-  gigVenue: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  gigDoors: { color: "#c8c8d0", fontSize: 13, marginTop: 2 },
+  eventHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  eventVenue: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  eventDoors: { color: "#c8c8d0", fontSize: 13, marginTop: 2 },
+  rehearsalBadge: {
+    backgroundColor: "#2a2a30",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  rehearsalBadgeText: { color: "#a0a0b0", fontSize: 11, fontWeight: "600" },
 });

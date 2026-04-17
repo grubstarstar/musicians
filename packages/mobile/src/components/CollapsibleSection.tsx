@@ -1,17 +1,26 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  Text,
+  TextStyle,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 interface CollapsibleSectionProps {
   title: string;
   children: ReactNode;
+  textStyleOverride?: StyleProp<TextStyle>;
   defaultOpen?: boolean;
 }
 
 export function CollapsibleSection({
   title,
   children,
+  textStyleOverride,
   defaultOpen = true,
 }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
@@ -23,7 +32,7 @@ export function CollapsibleSection({
         style={styles.header}
         hitSlop={4}
       >
-        <Text style={styles.title}>{title}</Text>
+        <Text style={[styles.title, textStyleOverride]}>{title}</Text>
         <Ionicons
           name={open ? "chevron-down" : "chevron-forward"}
           size={18}

@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-interface TimelineItem {
-  label: string;
-  sublabel?: string;
+const SHORT_DAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+export interface TimelineItem {
+  eventDatetime: Date;
   content: ReactNode;
 }
 
@@ -21,10 +23,13 @@ export function TimelineList({ items }: TimelineListProps) {
             style={[styles.row, i < items.length - 1 && styles.rowBorder]}
           >
             <View style={styles.dateChip}>
-              <Text style={styles.dateLabel}>{item.label}</Text>
-              {item.sublabel && (
-                <Text style={styles.dateSublabel}>{item.sublabel}</Text>
-              )}
+              <Text style={styles.dateLabel}>
+                {SHORT_DAYS[item.eventDatetime.getDay()]}
+              </Text>
+              <Text style={styles.dateSublabel}>
+                {SHORT_MONTHS[item.eventDatetime.getMonth()]}{" "}
+                {item.eventDatetime.getDate()}
+              </Text>
             </View>
             <View style={styles.details}>{item.content}</View>
           </View>

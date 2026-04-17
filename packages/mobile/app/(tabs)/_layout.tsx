@@ -1,3 +1,4 @@
+import { AntDesign, Entypo, MaterialIcons } from "@expo/vector-icons";
 import { DrawerActions } from "@react-navigation/native";
 import { Tabs, useNavigation } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity } from "react-native";
@@ -24,30 +25,14 @@ export default function TabsRoots() {
         name="(stack)"
         options={{
           tabBarLabel: "Home",
-          tabBarIcon: () => (
-            <Text
-              style={{
-                color: "#fff",
-              }}
-            >
-              🎶
-            </Text>
-          ),
+          tabBarIcon: () => <Entypo name="home" size={22} color="white" />,
         }}
       />
       <Tabs.Screen
         name="ai-chat"
         options={{
           tabBarLabel: "Query",
-          tabBarIcon: () => (
-            <Text
-              style={{
-                color: "#fff",
-              }}
-            >
-              🤖
-            </Text>
-          ),
+          tabBarIcon: () => <Entypo name="chat" size={22} color="white" />,
         }}
       />
       <Tabs.Screen
@@ -55,13 +40,7 @@ export default function TabsRoots() {
         options={{
           tabBarLabel: "Expo UI",
           tabBarIcon: () => (
-            <Text
-              style={{
-                color: "#fff",
-              }}
-            >
-              🎶
-            </Text>
+            <MaterialIcons name="widgets" size={24} color="white" />
           ),
         }}
       />
@@ -70,13 +49,7 @@ export default function TabsRoots() {
         options={{
           tabBarLabel: "Controls",
           tabBarIcon: () => (
-            <Text
-              style={{
-                color: "#fff",
-              }}
-            >
-              🎺
-            </Text>
+            <AntDesign name="control" size={22} color="white" />
           ),
         }}
       />

@@ -3,8 +3,8 @@ import { ChipRow } from "./ChipRow";
 import { TimelineList } from "./TimelineList";
 
 const SESSIONS = [
-  { day: "FRI", time: "8pm", band: "The Skylarks", venue: "Fox & Firkin" },
-  { day: "SAT", time: "9pm", band: "Night Owls", venue: "The Lexington" },
+  { datetime: new Date(2026, 4, 1), band: "The Skylarks", venue: "Fox & Firkin" },
+  { datetime: new Date(2026, 4, 2), band: "Night Owls", venue: "The Lexington" },
 ];
 
 const GEAR_CHECKLIST = [
@@ -19,8 +19,7 @@ export function SoundEngineerHome() {
       <Text style={styles.sectionTitle}>Upcoming sessions</Text>
       <TimelineList
         items={SESSIONS.map((s) => ({
-          label: s.day,
-          sublabel: s.time,
+          eventDatetime: s.datetime,
           content: (
             <View>
               <Text style={styles.primary}>{s.band}</Text>

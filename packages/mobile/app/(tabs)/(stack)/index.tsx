@@ -8,6 +8,7 @@ import { VenueRepHome } from "../../../src/components/home/VenueRepHome";
 import { useUser, type UserContextType } from "../../../src/user/UserContext";
 import { Tabs, useNavigation } from "expo-router";
 import { DrawerActions } from "@react-navigation/native";
+import { FontAwesome6 } from "@expo/vector-icons";
 
 const CONTEXT_VIEWS: Record<UserContextType, React.ComponentType> = {
   musician: MusicianHome,
@@ -36,14 +37,21 @@ export default function Home() {
         }}
       /> */}
       <View style={styles.welcomeWrap}>
-        <Text style={styles.welcome}>Welcome {displayName}</Text>
+        <Text style={styles.welcome}>Hello {displayName}</Text>
         <TouchableOpacity
           onPress={openDrawer}
-          style={{ paddingHorizontal: 16 }}
+          style={{
+            paddingLeft: 16,
+            justifyContent: "center",
+            alignItems: "flex-end",
+          }}
+          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Open profile menu"
         >
-          <Text style={{ fontSize: 22 }}>👤</Text>
+          <Text style={{ fontSize: 22 }}>
+            <FontAwesome6 name="face-smile-beam" size={24} color="white" />
+          </Text>
         </TouchableOpacity>
       </View>
       <ContextView />

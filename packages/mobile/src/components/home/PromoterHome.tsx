@@ -9,8 +9,8 @@ const BOOKING_REQUESTS = [
 ];
 
 const UPCOMING_SHOWS = [
-  { day: "SAT", date: "May 2", band: "Night Owls", venue: "The Lexington" },
-  { day: "FRI", date: "May 8", band: "The Skylarks", venue: "Fox & Firkin" },
+  { datetime: new Date(2026, 4, 2), band: "Night Owls", venue: "The Lexington" },
+  { datetime: new Date(2026, 4, 8), band: "The Skylarks", venue: "Fox & Firkin" },
 ];
 
 export function PromoterHome() {
@@ -44,8 +44,7 @@ export function PromoterHome() {
       <Text style={styles.sectionTitle}>Upcoming shows</Text>
       <TimelineList
         items={UPCOMING_SHOWS.map((show) => ({
-          label: show.day,
-          sublabel: show.date,
+          eventDatetime: show.datetime,
           content: (
             <View>
               <Text style={styles.cardTitle}>{show.band}</Text>

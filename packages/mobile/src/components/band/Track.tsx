@@ -2,6 +2,13 @@ import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { MockTrack } from "../../data/mockBands";
+import {
+  Entypo,
+  Feather,
+  FontAwesome,
+  FontAwesome6,
+  MaterialIcons,
+} from "@expo/vector-icons";
 
 interface TrackProps {
   isActive: boolean;
@@ -53,11 +60,23 @@ export function Track({ isActive, playing, track }: TrackProps) {
         style={[
           styles.playButton,
           isLoading && {
-            opacity: 0.5,
+            opacity: 0.3,
           },
         ]}
       >
-        {isPlaying ? "⏸" : "▶️"}
+        {isPlaying ? (
+          // <Feather name="pause" size={24} color="white" />
+          // <FontAwesome name="pause" size={24} color="white" />
+          // <MaterialIcons name="pause" size={24} color="white" />
+          <Entypo name="controller-paus" size={24} color="white" />
+        ) : (
+          // <FontAwesome6 name="pause" size={24} color="white" />
+          <Entypo name="controller-play" size={24} color="white" />
+          // <FontAwesome name="play" size={24} color="white" />
+          // <MaterialIcons name="play-arrow" size={24} color="white" />
+          // <Feather name="play" size={24} color="white" />
+          // <Entypo name="controller-play" size={24} color="white" />
+        )}
       </Text>
     </View>
   );

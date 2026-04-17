@@ -2,11 +2,11 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { TimelineList } from "./TimelineList";
 
 const SCHEDULE = [
-  { day: "FRI", band: "The Skylarks", doors: "7pm" },
-  { day: "SAT", band: "Night Owls", doors: "8pm" },
-  { day: "SUN", date: "May 10", band: null, doors: null },
-  { day: "TUE", date: "May 12", band: null, doors: null },
-  { day: "WED", band: "Velvet Rum", doors: "7:30pm" },
+  { datetime: new Date(2026, 4, 1), band: "The Skylarks", doors: "7pm" },
+  { datetime: new Date(2026, 4, 2), band: "Night Owls", doors: "8pm" },
+  { datetime: new Date(2026, 4, 10), band: null, doors: null },
+  { datetime: new Date(2026, 4, 12), band: null, doors: null },
+  { datetime: new Date(2026, 4, 6), band: "Velvet Rum", doors: "7:30pm" },
 ];
 
 export function VenueRepHome() {
@@ -15,8 +15,7 @@ export function VenueRepHome() {
       <Text style={styles.sectionTitle}>Schedule</Text>
       <TimelineList
         items={SCHEDULE.map((s) => ({
-          label: s.day,
-          sublabel: s.date,
+          eventDatetime: s.datetime,
           content: s.band ? (
             <View>
               <Text style={styles.primary}>{s.band}</Text>
