@@ -1,9 +1,10 @@
 # Musicians — Project Standards
 
 ## Stack
-- **Frontend**: React 19 + Vite + TypeScript
+- **Frontend**: React 19 + Vite + TypeScript (web); Expo + React Native (mobile)
 - **Backend**: Hono + Node.js + TypeScript
-- **Database**: SQLite via better-sqlite3
+- **Database**: Postgres via `postgres` (postgres.js) + Docker Compose for local dev
+- **API**: REST at `/api/*` (existing; serves web), tRPC at `/trpc/*` (new work). Mobile consumes tRPC via `@trpc/client` + TanStack Query; shared types flow through `@musicians/shared`
 - **Package manager**: pnpm (never npm or yarn)
 
 ## Monorepo
@@ -11,6 +12,7 @@
 - `@musicians/web` — React + Vite frontend (`packages/web/`)
 - `@musicians/server` — Hono backend (`packages/server/`)
 - `@musicians/mobile` — Expo + React Native mobile app (`packages/mobile/`) — see [`docs/expo-monorepo.md`](docs/expo-monorepo.md) before touching it, Expo/Metro/pnpm have sharp edges that are easy to "fix" wrong
+- `@musicians/shared` — cross-package types and (later) Zod DTO schemas (`packages/shared/`); re-exports the tRPC `AppRouter` type for mobile to consume
 - Root `package.json` holds only shared dev tooling (tsc, eslint, concurrently) and delegates scripts via `pnpm --filter` / `pnpm -r`
 - Run everything from the repo root: `pnpm dev`, `pnpm build`, `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm seed`, `pnpm mobile:start`
 
@@ -23,11 +25,11 @@
 - No other component libraries
 
 ## ORM: Drizzle
-- Schema defined in `packages/server/src/schema.ts` using Drizzle table definitions
+- Schema defined in `packages/server/src/schema.ts` using Drizzle `pg-core` table definitions
 - DB instance and schema exported from `packages/server/src/db.ts`
-- SQLite file lives at the repo root (`musicians.db`); override with `MUSICIANS_DB_PATH`
+- Postgres runs in Docker (`docker compose up -d postgres`); connection via `DATABASE_URL` (defaults to `postgresql://postgres:postgres@localhost:5432/musicians`)
 - All queries use Drizzle query builder — no raw SQL strings except migrations
-- Migrations managed via `drizzle-kit`
+- Migrations managed via `drizzle-kit`. Generate with `pnpm db:generate`, apply with `pnpm db:migrate`
 
 ## Folder structure
 ```
@@ -46,20 +48,29 @@ packages/
   server/
     tsconfig.json
     src/
-      index.ts          # Hono app entry
+      index.ts          # Hono app entry (mounts REST + tRPC)
       db.ts             # DB instance + Drizzle client
       schema.ts         # Drizzle schema (tables)
-      auth.ts           # JWT helpers
+      auth.ts           # JWT helpers (bearer + cookie)
       seed.ts           # Seed script
-      routes/
+      routes/           # REST routes (Hono sub-apps)
         authRoutes.ts
         bandRoutes.ts
         userRoutes.ts
+      trpc/             # tRPC router, context, procedure helpers
+        context.ts
+        trpc.ts
+        router.ts
+  shared/
+    src/
+      index.ts          # Cross-package types; re-exports AppRouter
 ```
 
 ## Auth pattern
-- All protected routes check the auth cookie via `getTokenFromCookie` + `verifyToken`
-- Return `401` with `{ error: 'Unauthorized' }` if invalid
+- REST: protected routes call `getTokenFromCookie` + `verifyToken`. Return `401` with `{ error: 'Unauthorized' }` if invalid.
+- tRPC: `protectedProcedure` wraps `publicProcedure` with a middleware that throws `TRPCError({ code: 'UNAUTHORIZED' })` if `ctx.user` is null.
+- Context (`packages/server/src/trpc/context.ts`) resolves the user via `getTokenFromRequest`, which checks the `Authorization: Bearer <token>` header first and falls back to the `auth_token` cookie. Mobile uses bearer; web uses cookies. Same `verifyToken` helper for both.
+- Login endpoint returns the token in both the response body (for mobile to store) and the HttpOnly cookie (for web).
 
 ## TypeScript
 - Strict mode on

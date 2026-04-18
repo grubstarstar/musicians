@@ -33,7 +33,3 @@ dist
 # Environment variables
 .env
 
-# SQLite database
-musicians.db
-musicians.db-wal
-musicians.db-shm

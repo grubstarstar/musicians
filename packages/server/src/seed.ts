@@ -1,32 +1,36 @@
 import bcrypt from 'bcrypt';
-import { sqlite } from './db.js';
+import { and, eq, isNull, sql as sqlTag } from 'drizzle-orm';
+import { db, sql } from './db.js';
+import { bands, bandTracks, users } from './schema.js';
 
-// Seed admin user
 const username = 'admin';
 const password = 'password123';
 const hash = await bcrypt.hash(password, 12);
 
-const userResult = sqlite
-  .prepare('INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)')
-  .run(username, hash);
+const [existingAdmin] = await db
+  .select({ id: users.id })
+  .from(users)
+  .where(eq(users.username, username));
 
-if (userResult.changes > 0) {
-  console.log(`Created user: ${username} / ${password}`);
-} else {
+if (existingAdmin) {
   console.log(`User '${username}' already exists — skipped.`);
+} else {
+  await db.insert(users).values({ username, password_hash: hash });
+  console.log(`Created user: ${username} / ${password}`);
 }
 
-// Seed band images
-const bands = sqlite.prepare('SELECT id, name FROM bands').all() as { id: number; name: string }[];
+const allBands = await db.select({ id: bands.id, name: bands.name }).from(bands);
 
-for (const band of bands) {
+for (const band of allBands) {
   const slug = band.name.toLowerCase().replace(/\s+/g, '-');
   const imageUrl = `https://picsum.photos/seed/${slug}/600/400`;
-  sqlite.prepare('UPDATE bands SET imageUrl = ? WHERE id = ? AND imageUrl IS NULL').run(imageUrl, band.id);
+  await db
+    .update(bands)
+    .set({ imageUrl })
+    .where(and(eq(bands.id, band.id), isNull(bands.imageUrl)));
   console.log(`Set image for band: ${band.name}`);
 }
 
-// Seed audio tracks (SoundHelix MP3s)
 const trackPool = [
   { title: 'Song One', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
   { title: 'Song Two', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
@@ -35,21 +39,25 @@ const trackPool = [
   { title: 'Song Five', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3' },
 ];
 
-const insertTrack = sqlite.prepare(
-  'INSERT INTO band_tracks (band_id, title, url, position) VALUES (?, ?, ?, ?)'
-);
-const existingTracks = sqlite.prepare('SELECT COUNT(*) as count FROM band_tracks WHERE band_id = ?');
+for (let i = 0; i < allBands.length; i++) {
+  const band = allBands[i];
+  const [{ count }] = await db
+    .select({ count: sqlTag<number>`count(*)::int` })
+    .from(bandTracks)
+    .where(eq(bandTracks.band_id, band.id));
 
-for (let i = 0; i < bands.length; i++) {
-  const band = bands[i];
-  const { count } = existingTracks.get(band.id) as { count: number };
   if (count > 0) {
     console.log(`Band '${band.name}' already has tracks — skipped.`);
     continue;
   }
+
   const track1 = trackPool[i % trackPool.length];
   const track2 = trackPool[(i + 1) % trackPool.length];
-  insertTrack.run(band.id, track1.title, track1.url, 0);
-  insertTrack.run(band.id, track2.title, track2.url, 1);
+  await db.insert(bandTracks).values([
+    { band_id: band.id, title: track1.title, url: track1.url, position: 0 },
+    { band_id: band.id, title: track2.title, url: track2.url, position: 1 },
+  ]);
   console.log(`Seeded 2 tracks for band: ${band.name}`);
 }
+
+await sql.end();

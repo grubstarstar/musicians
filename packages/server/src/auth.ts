@@ -37,3 +37,16 @@ export function getTokenFromCookie(cookieHeader: string | undefined): string | n
   const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
   return match ? match[1] : null;
 }
+
+export function getTokenFromAuthHeader(authorizationHeader: string | undefined): string | null {
+  if (!authorizationHeader) return null;
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() || null : null;
+}
+
+export function getTokenFromRequest(req: Request): string | null {
+  return (
+    getTokenFromAuthHeader(req.headers.get('authorization') ?? undefined) ??
+    getTokenFromCookie(req.headers.get('cookie') ?? undefined)
+  );
+}

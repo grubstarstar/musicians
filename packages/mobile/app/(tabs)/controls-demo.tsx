@@ -16,6 +16,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { PingCard } from "../../src/components/PingCard";
+import { queryClient } from "../../src/trpc";
 
 const bands = [
   { id: "1", name: "Lit Allusions" },
@@ -40,9 +42,10 @@ export default function App() {
     setTimeout(() => setLoading(false), 1500);
   };
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1200);
+    await queryClient.invalidateQueries();
+    setRefreshing(false);
   };
 
   return (
@@ -58,6 +61,8 @@ export default function App() {
         }
       >
         <Text style={styles.title}>Welcome {name || "stranger"}!</Text>
+
+        <PingCard />
 
         <Section title="TextInput">
           <TextInput

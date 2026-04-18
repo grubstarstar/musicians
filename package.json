@@ -13,7 +13,11 @@
     "test:watch": "pnpm --filter @musicians/web test:watch",
     "lint": "eslint .",
     "typecheck": "tsc -b",
-    "seed": "pnpm --filter @musicians/server seed"
+    "seed": "pnpm --filter @musicians/server seed",
+    "db:generate": "pnpm --filter @musicians/server db:generate",
+    "db:migrate": "pnpm --filter @musicians/server db:migrate",
+    "db:push": "pnpm --filter @musicians/server db:push",
+    "db:psql": "docker exec -it musicians-postgres psql -U postgres -d musicians"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -28,7 +32,6 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "bcrypt",
-      "better-sqlite3",
       "esbuild"
     ],
     "overrides": {

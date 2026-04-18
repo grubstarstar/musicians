@@ -288,6 +288,35 @@ specifiers into `packages/mobile/package.json` and you're aligned with upstream.
 Either path is fine; Path A is less typing and less likely to drift, Path B
 gives you a paper trail and doesn't touch the working tree.
 
+## Talking to the API in dev
+
+The mobile app reaches the Hono server via tRPC (base path `/trpc/*`) and REST (`/api/*`). The URL is read once in `packages/mobile/src/trpc.ts`:
+
+```ts
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001';
+```
+
+`EXPO_PUBLIC_*` env vars are inlined at bundle time by Metro, so setting them in the shell before `expo start` is enough — no extra config.
+
+**iOS Simulator** — `localhost` refers to the Mac. The default works, no env var needed.
+
+**Android Emulator** — `localhost` refers to the emulator, not your host. Use `http://10.0.2.2:3001` (AVD's alias for the host machine):
+```
+EXPO_PUBLIC_API_URL=http://10.0.2.2:3001 pnpm mobile:start
+```
+
+**Physical device (Expo Go)** — the device is on your LAN. Find your Mac's LAN IP (`ipconfig getifaddr en0` usually, or System Settings → Wi-Fi → Details), then:
+```
+EXPO_PUBLIC_API_URL=http://192.168.x.y:3001 pnpm mobile:start
+```
+Your phone and Mac must be on the same Wi-Fi. If you're tethered through a corporate network with client isolation, this won't work — use a tunnel (e.g. `ngrok http 3001`) and point `EXPO_PUBLIC_API_URL` at the https tunnel.
+
+**Smoke-testing the server independently** — before blaming the mobile side:
+```
+curl http://localhost:3001/trpc/system.ping
+```
+Expect `{"result":{"data":{"ok":true,"at":"..."}}}`. If that works but the mobile app can't reach it, the problem is the URL the device is resolving, not the server.
+
 ## Reference
 
 **Official docs — start here:**

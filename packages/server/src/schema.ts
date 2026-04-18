@@ -1,36 +1,36 @@
-import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, pgTable, primaryKey, serial, text } from 'drizzle-orm/pg-core';
 
-export const users = sqliteTable('users', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
   username: text('username').unique().notNull(),
   password_hash: text('password_hash').notNull(),
   firstName: text('firstName'),
   lastName: text('lastName'),
 });
 
-export const bands = sqliteTable('bands', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const bands = pgTable('bands', {
+  id: serial('id').primaryKey(),
   name: text('name').notNull(),
   imageUrl: text('imageUrl'),
 });
 
-export const bandTracks = sqliteTable('band_tracks', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const bandTracks = pgTable('band_tracks', {
+  id: serial('id').primaryKey(),
   band_id: integer('band_id').notNull().references(() => bands.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   url: text('url').notNull(),
   position: integer('position').notNull().default(0),
 });
 
-export const bandMembers = sqliteTable(
+export const bandMembers = pgTable(
   'band_members',
   {
     band_id: integer('band_id')
       .notNull()
-      .references(() => bands.id),
+      .references(() => bands.id, { onDelete: 'cascade' }),
     user_id: integer('user_id')
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: 'cascade' }),
   },
   (table) => [primaryKey({ columns: [table.band_id, table.user_id] })],
 );

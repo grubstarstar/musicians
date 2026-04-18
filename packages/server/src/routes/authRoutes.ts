@@ -30,7 +30,7 @@ authRoutes.post('/login', async (c) => {
 
   const token = await signToken({ sub: String(user.id), username: user.username });
   c.header('Set-Cookie', buildSetCookieHeader(token));
-  return c.json({ username: user.username });
+  return c.json({ username: user.username, token });
 });
 
 authRoutes.post('/logout', (c) => {
