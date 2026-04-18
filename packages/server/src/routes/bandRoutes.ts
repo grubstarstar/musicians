@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db.js';
-import { bands, bandMembers, bandTracks, users } from '../schema.js';
-import type { BandWithMembers, BandProfile } from '../schema.js';
+import { bands, bandMembers } from '../schema.js';
+import { getBandProfile, listBands } from '../bands/queries.js';
 import { verifyToken, getTokenFromCookie } from '../auth.js';
 
 const bandRoutes = new Hono();
@@ -17,28 +17,7 @@ async function requireAuth(c: Context) {
 // List all bands with their members
 bandRoutes.get('/', async (c) => {
   if (!await requireAuth(c)) return c.json({ error: 'Unauthorized' }, 401);
-
-  const allBands = await db.select().from(bands).orderBy(asc(bands.name));
-
-  const allMembers = await db
-    .select({
-      band_id: bandMembers.band_id,
-      id: users.id,
-      username: users.username,
-      firstName: users.firstName,
-      lastName: users.lastName,
-    })
-    .from(bandMembers)
-    .innerJoin(users, eq(users.id, bandMembers.user_id));
-
-  const result: BandWithMembers[] = allBands.map((band) => ({
-    ...band,
-    members: allMembers
-      .filter((m) => m.band_id === band.id)
-      .map(({ id, username, firstName, lastName }) => ({ id, username, firstName, lastName })),
-  }));
-
-  return c.json(result);
+  return c.json(await listBands());
 });
 
 // Get a single band profile (members + tracks)
@@ -46,22 +25,8 @@ bandRoutes.get('/:id', async (c) => {
   if (!await requireAuth(c)) return c.json({ error: 'Unauthorized' }, 401);
 
   const id = Number(c.req.param('id'));
-  const [band] = await db.select().from(bands).where(eq(bands.id, id));
-  if (!band) return c.json({ error: 'Not found' }, 404);
-
-  const members = await db
-    .select({ id: users.id, username: users.username, firstName: users.firstName, lastName: users.lastName })
-    .from(bandMembers)
-    .innerJoin(users, eq(users.id, bandMembers.user_id))
-    .where(eq(bandMembers.band_id, id));
-
-  const tracks = await db
-    .select({ id: bandTracks.id, title: bandTracks.title, url: bandTracks.url, position: bandTracks.position })
-    .from(bandTracks)
-    .where(eq(bandTracks.band_id, id))
-    .orderBy(asc(bandTracks.position));
-
-  const profile: BandProfile = { ...band, members, tracks };
+  const profile = await getBandProfile(id);
+  if (!profile) return c.json({ error: 'Not found' }, 404);
   return c.json(profile);
 });
 

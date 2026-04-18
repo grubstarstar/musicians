@@ -1,19 +1,19 @@
+import { Entypo } from "@expo/vector-icons";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { MockTrack } from "../../data/mockBands";
-import {
-  Entypo,
-  Feather,
-  FontAwesome,
-  FontAwesome6,
-  MaterialIcons,
-} from "@expo/vector-icons";
+
+export interface BandTrack {
+  id: number;
+  title: string;
+  url: string;
+  position: number;
+}
 
 interface TrackProps {
   isActive: boolean;
   playing: boolean;
-  track: MockTrack;
+  track: BandTrack;
 }
 
 function formatTime(seconds: number): string {

@@ -1,40 +1,64 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useQuery } from "@tanstack/react-query";
+import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-import { ChipRow } from "../../../../src/components/home/ChipRow";
 import { CollapsibleSection } from "../../../../src/components/CollapsibleSection";
-import { TimelineList } from "../../../../src/components/home/TimelineList";
 import { TrackList } from "../../../../src/components/band/TrackList";
-import { mockBands } from "../../../../src/data/mockBands";
+import { ChipRow } from "../../../../src/components/home/ChipRow";
 import { useImageColors } from "../../../../src/hooks/useImageColors";
+import { trpc } from "../../../../src/trpc";
+
+const HERO_FALLBACK = "#0f0f11";
 
 export default function BandScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const band = mockBands[id];
+
+  const parsedId = Number(id);
+  const isValidId = Number.isInteger(parsedId) && parsedId > 0;
+
+  const { data, isLoading, error } = useQuery({
+    ...trpc.bands.getById.queryOptions({ id: parsedId }),
+    enabled: isValidId,
+  });
+
   const { background, textColor } = useImageColors(
-    band?.image ?? "",
-    band?.color ?? "#0f0f11"
+    data?.imageUrl ?? "",
+    HERO_FALLBACK,
   );
 
-  if (!band) {
+  if (!isValidId) {
+    return <BandNotFound />;
+  }
+
+  if (isLoading) {
     return (
-      <View style={styles.notFound}>
-        <Text style={styles.notFoundText}>Band not found</Text>
+      <View style={styles.centered}>
+        <ActivityIndicator color="#6c63ff" />
       </View>
     );
   }
 
+  if (error || !data) {
+    return <BandNotFound />;
+  }
+
   return (
     <ScrollView style={[styles.container, { backgroundColor: background }]}>
-      {/* Hero banner */}
       <View style={styles.heroWrapper}>
         <Image
-          source={{ uri: band.image }}
-          style={[styles.hero, { backgroundColor: band.color }]}
+          source={{ uri: data.imageUrl ?? undefined }}
+          style={[styles.hero, { backgroundColor: HERO_FALLBACK }]}
         />
         <LinearGradient
           locations={[0, 0.3, 0.7]}
@@ -44,61 +68,57 @@ export default function BandScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={36} color="#fff" />
         </Pressable>
-        <Text style={[styles.heroName, { color: textColor }]}>{band.name}</Text>
+        <Text style={[styles.heroName, { color: textColor }]}>{data.name}</Text>
       </View>
 
-      {/* Members */}
-      <CollapsibleSection
-        title="Members"
-        textStyleOverride={{ color: textColor }}
-      >
-        <ChipRow chips={band.members.map((m) => ({ label: m.name }))} />
-      </CollapsibleSection>
+      {data.members.length > 0 && (
+        <CollapsibleSection
+          title="Members"
+          textStyleOverride={{ color: textColor }}
+        >
+          <ChipRow
+            chips={data.members.map((m) => ({ label: memberDisplayName(m) }))}
+          />
+        </CollapsibleSection>
+      )}
 
-      {/* Tracks */}
-      {band.tracks.length > 0 && (
+      {data.tracks.length > 0 && (
         <CollapsibleSection
           title="Tracks"
           textStyleOverride={{ color: textColor }}
         >
-          <TrackList tracks={band.tracks} />
-        </CollapsibleSection>
-      )}
-
-      {/* Upcoming events */}
-      {band.events.length > 0 && (
-        <CollapsibleSection
-          title="Upcoming events"
-          textStyleOverride={{ color: textColor }}
-        >
-          <TimelineList
-            items={band.events.map((e) => ({
-              eventDatetime: e.datetime,
-              content: (
-                <View>
-                  <View style={styles.eventHeader}>
-                    <Text style={styles.eventVenue}>{e.venue}</Text>
-                    {e.type === "rehearsal" && (
-                      <View style={styles.rehearsalBadge}>
-                        <Text style={styles.rehearsalBadgeText}>Rehearsal</Text>
-                      </View>
-                    )}
-                  </View>
-                  {e.doors && (
-                    <Text style={styles.eventDoors}>Doors {e.doors}</Text>
-                  )}
-                </View>
-              ),
-            }))}
-          />
+          <TrackList tracks={data.tracks} />
         </CollapsibleSection>
       )}
     </ScrollView>
   );
 }
 
+function memberDisplayName(m: {
+  username: string;
+  firstName: string | null;
+  lastName: string | null;
+}): string {
+  const full = [m.firstName, m.lastName].filter(Boolean).join(" ").trim();
+  return full || m.username;
+}
+
+function BandNotFound() {
+  return (
+    <View style={styles.notFound}>
+      <Text style={styles.notFoundText}>Band not found</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f0f11" },
+  centered: {
+    flex: 1,
+    backgroundColor: "#0f0f11",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   heroWrapper: {
     height: 200,
     justifyContent: "flex-end",
@@ -129,11 +149,6 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     zIndex: 2,
   },
-  backText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
   notFound: {
     flex: 1,
     backgroundColor: "#0f0f11",
@@ -141,14 +156,4 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   notFoundText: { color: "#7a7a85", fontSize: 16 },
-  eventHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  eventVenue: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  eventDoors: { color: "#c8c8d0", fontSize: 13, marginTop: 2 },
-  rehearsalBadge: {
-    backgroundColor: "#2a2a30",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  rehearsalBadgeText: { color: "#a0a0b0", fontSize: 11, fontWeight: "600" },
 });

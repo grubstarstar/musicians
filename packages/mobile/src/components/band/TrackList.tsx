@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import type { MockTrack } from "../../data/mockBands";
-import { Track } from "./Track";
+import { Track, type BandTrack } from "./Track";
 
 interface TrackListProps {
-  tracks: MockTrack[];
+  tracks: BandTrack[];
 }
 
 export function TrackList({ tracks }: TrackListProps) {
@@ -14,7 +13,7 @@ export function TrackList({ tracks }: TrackListProps) {
   return (
     <View style={styles.container}>
       <View style={styles.list}>
-        {tracks.map((track, i) => {
+        {tracks.map((track) => {
           const onPress = () => {
             if (activeTrackId === track.id) {
               setIsPlaying((p) => !p);

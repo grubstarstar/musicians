@@ -19,6 +19,27 @@ if (existingAdmin) {
   console.log(`Created user: ${username} / ${password}`);
 }
 
+const defaultBandNames = [
+  'The Skylarks',
+  'Night Owls',
+  'Velvet Rum',
+  'Solar Flare',
+  'Pale Blue',
+  'Rust & Bone',
+  'Lit. Allusions',
+];
+
+const [{ count: bandCount }] = await db
+  .select({ count: sqlTag<number>`count(*)::int` })
+  .from(bands);
+
+if (bandCount === 0) {
+  await db.insert(bands).values(defaultBandNames.map((name) => ({ name })));
+  console.log(`Seeded ${defaultBandNames.length} default bands.`);
+} else {
+  console.log(`Bands table already has ${bandCount} row(s) — skipped default-band seed.`);
+}
+
 const allBands = await db.select({ id: bands.id, name: bands.name }).from(bands);
 
 for (const band of allBands) {

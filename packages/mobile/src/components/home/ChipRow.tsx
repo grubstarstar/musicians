@@ -1,9 +1,10 @@
+import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 interface Chip {
   label: string;
   color?: string;
-  icon?: string;
+  icon?: ReactNode;
 }
 
 interface ChipRowProps {
@@ -16,7 +17,7 @@ export function ChipRow({ chips }: ChipRowProps) {
       <View style={styles.row}>
         {chips.map((chip) => (
           <View key={chip.label} style={styles.chip}>
-            {chip.icon && <Text style={styles.icon}>{chip.icon}</Text>}
+            {chip.icon}
             {chip.color && (
               <View style={[styles.dot, { backgroundColor: chip.color }]} />
             )}

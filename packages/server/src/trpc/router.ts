@@ -1,3 +1,6 @@
+import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
+import { getBandProfile, listBands } from '../bands/queries.js';
 import { protectedProcedure, publicProcedure, router } from './trpc.js';
 
 export const appRouter = router({
@@ -7,6 +10,18 @@ export const appRouter = router({
       at: new Date().toISOString(),
     })),
     whoami: protectedProcedure.query(({ ctx }) => ctx.user),
+  }),
+  bands: router({
+    list: publicProcedure.query(() => listBands()),
+    getById: publicProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const profile = await getBandProfile(input.id);
+        if (!profile) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Band not found' });
+        }
+        return profile;
+      }),
   }),
 });
 
