@@ -317,6 +317,35 @@ curl http://localhost:3001/trpc/system.ping
 ```
 Expect `{"result":{"data":{"ok":true,"at":"..."}}}`. If that works but the mobile app can't reach it, the problem is the URL the device is resolving, not the server.
 
+## Dev-only auth (bearer token on boot)
+
+Most tRPC procedures — including `bands.list` and `bands.getById` — are `protectedProcedure` and require a JWT. Until the real login UX lands (MUS-49), the mobile app logs in automatically on first request using two env vars:
+
+```
+EXPO_PUBLIC_DEV_USERNAME=admin
+EXPO_PUBLIC_DEV_PASSWORD=password123
+```
+
+Both default to the seeded admin credentials, so `pnpm mobile:start` works out of the box against a freshly seeded database. If you need a different identity (e.g. to test a non-admin seeded user), set the vars in the shell before `expo start`:
+
+```
+EXPO_PUBLIC_DEV_USERNAME=alice EXPO_PUBLIC_DEV_PASSWORD=hunter2 pnpm mobile:start
+```
+
+Mechanism, in order:
+
+1. `packages/mobile/src/devAuth.ts` exports `getDevAuthToken(apiUrl)`. First call POSTs to `/api/auth/login` with the env-var credentials and caches the returned JWT in memory.
+2. `packages/mobile/src/trpc.ts` wires that into `httpBatchLink({ headers: async () => ... })`, so every tRPC request carries `Authorization: Bearer <token>`.
+3. Concurrent callers share one in-flight login promise — only one network round-trip per app process.
+4. If login fails (bad creds, server down, network error), the helper logs a warning and returns `null`; tRPC calls will then return `UNAUTHORIZED`, which surfaces the problem instead of hiding it.
+
+Caveats, by design:
+
+- Token lives in memory only. Reloading Metro or relaunching the app re-logs-in.
+- No refresh / expiry handling. JWTs are 7-day-lived, so this is fine for dev; MUS-49 handles real-world expiry.
+- No `expo-secure-store`, no biometrics, no logout. All of that belongs to the auth UX ticket.
+- Web continues to use cookie auth via the existing REST flow — this file only affects `@musicians/mobile`.
+
 ## Reference
 
 **Official docs — start here:**

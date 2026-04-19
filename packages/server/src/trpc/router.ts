@@ -12,8 +12,8 @@ export const appRouter = router({
     whoami: protectedProcedure.query(({ ctx }) => ctx.user),
   }),
   bands: router({
-    list: publicProcedure.query(() => listBands()),
-    getById: publicProcedure
+    list: protectedProcedure.query(() => listBands()),
+    getById: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
         const profile = await getBandProfile(input.id);
