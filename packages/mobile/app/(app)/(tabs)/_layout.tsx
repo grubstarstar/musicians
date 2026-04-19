@@ -31,7 +31,7 @@ export default function TabsRoots() {
       <Tabs.Screen
         name="requests"
         options={{
-          tabBarLabel: "Requests",
+          tabBarLabel: "Discover",
           tabBarIcon: () => (
             <FontAwesome6 name="bullhorn" size={20} color="white" />
           ),
