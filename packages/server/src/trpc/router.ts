@@ -2,8 +2,14 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { getBandProfile, listBands } from '../bands/queries.js';
 import { getUpcomingEventsForBand } from '../events/queries.js';
+import {
+  createEoi,
+  getRequestById,
+  hasPendingEoiFromUser,
+  respondToEoi,
+} from '../requests/eoiQueries.js';
 import { createRequest, isMemberOfBand, listOpenRequests } from '../requests/queries.js';
-import { requestKindEnum } from '../schema.js';
+import { requestKindEnum, type EoiDetails } from '../schema.js';
 import { protectedProcedure, publicProcedure, router } from './trpc.js';
 
 export const appRouter = router({
@@ -64,6 +70,90 @@ export const appRouter = router({
     list: protectedProcedure
       .input(z.object({ kind: z.enum(requestKindEnum.enumValues).optional() }))
       .query(({ input }) => listOpenRequests({ kind: input.kind })),
+  }),
+  expressionsOfInterest: router({
+    create: protectedProcedure
+      .input(
+        z.object({
+          requestId: z.number().int().positive(),
+          // Discriminated union on `kind` — mirrors requests.create. Only one
+          // branch today; more kinds land with MUS-56/58.
+          details: z
+            .discriminatedUnion('kind', [
+              z.object({
+                kind: z.literal('musician-for-band'),
+                notes: z.string().optional(),
+              }),
+            ])
+            .optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+
+        const req = await getRequestById(input.requestId);
+        if (!req) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
+        }
+        if (req.status !== 'open') {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'Request is not open',
+          });
+        }
+        if (req.source_user_id === userId) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Cannot express interest in your own request',
+          });
+        }
+        const alreadyPending = await hasPendingEoiFromUser(input.requestId, userId);
+        if (alreadyPending) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'You already have a pending expression of interest on this request',
+          });
+        }
+
+        // Narrowing: `details` is typed as the discriminated union | undefined.
+        // Cast to EoiDetails for the nullable column; if absent, store null.
+        const details: EoiDetails | null = input.details ?? null;
+        return createEoi(input.requestId, userId, details);
+      }),
+    respond: protectedProcedure
+      .input(
+        z.object({
+          eoiId: z.number().int().positive(),
+          decision: z.enum(['accepted', 'rejected']),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        const result = await respondToEoi({
+          eoiId: input.eoiId,
+          callerUserId: userId,
+          decision: input.decision,
+        });
+        if (result.kind === 'not_found') {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Expression of interest not found',
+          });
+        }
+        if (result.kind === 'forbidden') {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Only the request author can respond to expressions of interest',
+          });
+        }
+        if (result.kind === 'not_pending') {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'Expression of interest has already been decided',
+          });
+        }
+        return result.outcome;
+      }),
   }),
 });
 
