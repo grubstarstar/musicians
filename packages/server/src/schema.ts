@@ -186,6 +186,28 @@ export const engineersLiveAudioGroups = pgTable(
   ],
 );
 
+// --- Events (MUS-48) ---
+//
+// NOTE on MUS-44 forward-compat: `venue` is stored as freeform text intentionally.
+// MUS-44 will introduce anchor/link objects (to venues, promoter groups, studios,
+// etc.); those will arrive as additional nullable FK columns on this table, so
+// nothing about the current shape needs to change when MUS-44 lands.
+
+export const eventKindEnum = pgEnum('event_kind', ['gig', 'rehearsal']);
+
+export const events = pgTable('events', {
+  id: serial('id').primaryKey(),
+  band_id: integer('band_id')
+    .notNull()
+    .references(() => bands.id, { onDelete: 'cascade' }),
+  kind: eventKindEnum('kind').notNull(),
+  datetime: timestamp('datetime', { withTimezone: true }).notNull(),
+  venue: text('venue').notNull(),
+  doors: text('doors'),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Band = typeof bands.$inferSelect;
 export type BandMember = typeof bandMembers.$inferSelect;
@@ -203,6 +225,9 @@ export type PromoterPromoterGroup = typeof promotersPromoterGroups.$inferSelect;
 export type PromoterGroupVenue = typeof promoterGroupsVenues.$inferSelect;
 export type EngineerRecordingStudio = typeof engineersRecordingStudios.$inferSelect;
 export type EngineerLiveAudioGroup = typeof engineersLiveAudioGroups.$inferSelect;
+
+export type Event = typeof events.$inferSelect;
+export type EventKind = (typeof eventKindEnum.enumValues)[number];
 
 export interface BandWithMembers extends Band {
   members: Pick<User, 'id' | 'username' | 'firstName' | 'lastName'>[];

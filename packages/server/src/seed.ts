@@ -7,6 +7,7 @@ import {
   bandTracks,
   engineersLiveAudioGroups,
   engineersRecordingStudios,
+  events,
   liveAudioGroups,
   promoterGroups,
   promoterGroupsVenues,
@@ -15,6 +16,7 @@ import {
   userRoles,
   users,
   venues,
+  type EventKind,
   type UserRoleName,
 } from './schema.js';
 
@@ -151,6 +153,75 @@ for (const band of allBands) {
     await db.insert(bandMembers).values(rows);
     console.log(`Seeded ${rows.length} members for band: ${band.name}`);
   }
+}
+
+// --- MUS-48: events (gigs / rehearsals) per band ---
+
+const eventVenues = [
+  'Wicks',
+  'The Lexington',
+  'Fox & Firkin',
+  'The Corner Stage',
+  'Northcote Social',
+  'Cherry Bar',
+  'The Tote',
+  'Brunswick Ballroom',
+];
+
+const rehearsalSpaces = ['Bakehouse Studios', 'Red Door Rehearsals', 'Wicks'];
+
+const doorsOptions: (string | null)[] = ['7pm', '8pm', '9pm', null];
+
+function addDays(base: Date, days: number): Date {
+  const next = new Date(base);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function buildEventsForBand(bandId: number, bandIndex: number): {
+  band_id: number;
+  kind: EventKind;
+  datetime: Date;
+  venue: string;
+  doors: string | null;
+}[] {
+  // Deterministic 3–8 events per band so re-seeds look identical and span
+  // the next few weeks. Alternating gig/rehearsal with the first event a gig.
+  const count = 3 + (bandIndex % 6); // 3..8
+  const today = new Date();
+  today.setUTCHours(19, 0, 0, 0); // 7pm UTC baseline
+
+  return Array.from({ length: count }, (_, i) => {
+    const isGig = i % 2 === 0;
+    const dayOffset = 3 + i * 4 + (bandIndex % 3); // stagger so bands don't collide
+    const datetime = addDays(today, dayOffset);
+    return {
+      band_id: bandId,
+      kind: (isGig ? 'gig' : 'rehearsal') as EventKind,
+      datetime,
+      venue: isGig
+        ? eventVenues[(bandIndex + i) % eventVenues.length]
+        : rehearsalSpaces[(bandIndex + i) % rehearsalSpaces.length],
+      doors: isGig ? doorsOptions[(bandIndex + i) % doorsOptions.length] : null,
+    };
+  });
+}
+
+for (let i = 0; i < allBands.length; i++) {
+  const band = allBands[i];
+  const [{ count }] = await db
+    .select({ count: sqlTag<number>`count(*)::int` })
+    .from(events)
+    .where(eq(events.band_id, band.id));
+
+  if (count > 0) {
+    console.log(`Band '${band.name}' already has events — skipped.`);
+    continue;
+  }
+
+  const rows = buildEventsForBand(band.id, i);
+  await db.insert(events).values(rows);
+  console.log(`Seeded ${rows.length} events for band: ${band.name}`);
 }
 
 // --- MUS-6: roles + role-owned entities ---

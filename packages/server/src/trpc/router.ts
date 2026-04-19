@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { getBandProfile, listBands } from '../bands/queries.js';
+import { getUpcomingEventsForBand } from '../events/queries.js';
 import { protectedProcedure, publicProcedure, router } from './trpc.js';
 
 export const appRouter = router({
@@ -22,6 +23,17 @@ export const appRouter = router({
         }
         return profile;
       }),
+  }),
+  events: router({
+    // Public for now per MUS-48; will flip to protectedProcedure in a later ticket.
+    upcomingForBand: publicProcedure
+      .input(
+        z.object({
+          bandId: z.number().int().positive(),
+          limit: z.number().int().positive().max(100).optional(),
+        }),
+      )
+      .query(({ input }) => getUpcomingEventsForBand(input.bandId, input.limit)),
   }),
 });
 
