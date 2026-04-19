@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { db } from '../db.js';
 import {
   bandMembers,
@@ -192,7 +192,6 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
     // for `gig-for-band` it's the gig the promoter supplied on the EoI. Null
     // for kinds that don't allocate into a gig (e.g. `musician-for-band`).
     let allocationGigId: number | null = null;
-    let claimedGigSlotId: number | null = null;
     if (req.kind === 'band-for-gig-slot') {
       if (eoi.details === null || eoi.details.kind !== 'band-for-gig-slot') {
         return { kind: 'invalid_eoi_details' } as const;
@@ -205,7 +204,6 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
       const bandId = eoi.details.bandId;
       const claim = await claimOpenSlot(tx, allocationGigId, bandId, now);
       if (!claim) return { kind: 'no_open_slot' } as const;
-      claimedGigSlotId = claim;
     } else if (req.kind === 'gig-for-band') {
       if (eoi.details === null || eoi.details.kind !== 'gig-for-band') {
         return { kind: 'invalid_eoi_details' } as const;
@@ -217,7 +215,6 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
       const bandId = req.details.bandId;
       const claim = await claimOpenSlot(tx, allocationGigId, bandId, now);
       if (!claim) return { kind: 'no_open_slot' } as const;
-      claimedGigSlotId = claim;
     }
 
     const { newSlotsFilled, shouldCloseRequest } = computeSlotOutcome(
@@ -256,10 +253,6 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
         .values({ band_id: req.anchor_band_id, user_id: eoi.target_user_id })
         .onConflictDoNothing();
     }
-    // Slot claim (band-for-gig-slot / gig-for-band) happened up-top so we
-    // could short-circuit on no-open-slot; `claimedGigSlotId` retained in
-    // case a future consumer wants to surface it.
-    void claimedGigSlotId;
 
     let autoRejectedEoiIds: number[] = [];
     if (shouldCloseRequest) {
@@ -286,7 +279,7 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
     // being accepted (which we've just updated above) so we exclude it here.
     // For `gig-for-band` there's no self-overlap to worry about.
     if (allocationGigId !== null) {
-      const siblings = await tx
+      const openSiblings = await tx
         .select({
           id: requests.id,
           slotsFilled: requests.slots_filled,
@@ -302,6 +295,32 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
           ),
         );
 
+      const siblingIds = openSiblings.map((s) => s.id);
+      const pendingByRequest = new Map<number, number[]>();
+      if (siblingIds.length > 0) {
+        const pending = await tx
+          .select({
+            id: expressionsOfInterest.id,
+            requestId: expressionsOfInterest.request_id,
+          })
+          .from(expressionsOfInterest)
+          .where(
+            and(
+              inArray(expressionsOfInterest.request_id, siblingIds),
+              eq(expressionsOfInterest.state, 'pending'),
+            ),
+          );
+        for (const row of pending) {
+          const existing = pendingByRequest.get(row.requestId) ?? [];
+          existing.push(row.id);
+          pendingByRequest.set(row.requestId, existing);
+        }
+      }
+
+      const siblings = openSiblings.map((s) => ({
+        ...s,
+        pendingEoiIds: pendingByRequest.get(s.id) ?? [],
+      }));
       const updates = computeGigAllocationUpdates(siblings);
       for (const update of updates) {
         await tx
@@ -312,22 +331,14 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
             updated_at: now,
           })
           .where(eq(requests.id, update.id));
-        if (update.shouldClose) {
-          const autoRejectedSib = await tx
-            .update(expressionsOfInterest)
-            .set({ state: 'auto_rejected', decided_at: now, updated_at: now })
-            .where(
-              and(
-                eq(expressionsOfInterest.request_id, update.id),
-                eq(expressionsOfInterest.state, 'pending'),
-              ),
-            )
-            .returning({ id: expressionsOfInterest.id });
-          autoRejectedEoiIds = [
-            ...autoRejectedEoiIds,
-            ...autoRejectedSib.map((r) => r.id),
-          ];
-        }
+      }
+      const siblingAutoRejectIds = updates.flatMap((u) => u.eoiIdsToAutoReject);
+      if (siblingAutoRejectIds.length > 0) {
+        await tx
+          .update(expressionsOfInterest)
+          .set({ state: 'auto_rejected', decided_at: now, updated_at: now })
+          .where(inArray(expressionsOfInterest.id, siblingAutoRejectIds));
+        autoRejectedEoiIds = [...autoRejectedEoiIds, ...siblingAutoRejectIds];
       }
     }
 

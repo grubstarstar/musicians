@@ -51,13 +51,6 @@ export interface ShapedRequestWithAnchors extends Omit<ShapedRequest, 'anchorBan
   band: { id: number; name: string; imageUrl: string | null } | null;
 }
 
-// Narrower shape used by queries that innerJoin on bands and are therefore
-// guaranteed to have a band anchor (MUS-55's detail + My Requests flows).
-// Keep this distinct from `ShapedRequestWithAnchors` whose `band` is nullable.
-export interface ShapedRequestWithBand extends Omit<ShapedRequest, 'anchorBandId' | 'anchorGigId'> {
-  band: { id: number; name: string; imageUrl: string | null };
-}
-
 // Nullable-band variant used for request detail reads since MUS-57 added
 // counterpart kinds (`band-for-gig-slot`, `gig-for-band`) that don't have a
 // band anchor. `band` is populated for `musician-for-band` and for
@@ -185,42 +178,6 @@ export async function listOpenRequests(filter: {
       band: anchorBand,
     };
   });
-}
-
-/**
- * Single-request read used by the Express Interest detail screen. Same shape
- * as a row from `listOpenRequests` so the detail / list views can share code.
- * Returns null if the request doesn't exist; caller maps to NOT_FOUND.
- *
- * Note: this variant innerJoins on bands so only `musician-for-band` rows
- * (which have a band anchor) are returned. Retained for backward compat
- * with MUS-55's mobile detail flow that hard-codes `data.band`. Newer flows
- * should use `getRequestForDetail` which handles the counterpart kinds too.
- */
-export async function getOpenRequestWithBand(
-  requestId: number,
-): Promise<ShapedRequestWithBand | null> {
-  const [row] = await db
-    .select({
-      id: requests.id,
-      kind: requests.kind,
-      status: requests.status,
-      slotCount: requests.slot_count,
-      slotsFilled: requests.slots_filled,
-      details: requests.details,
-      createdAt: requests.created_at,
-      bandId: bands.id,
-      bandName: bands.name,
-      bandImageUrl: bands.imageUrl,
-    })
-    .from(requests)
-    .innerJoin(bands, eq(bands.id, requests.anchor_band_id))
-    .where(eq(requests.id, requestId))
-    .limit(1);
-
-  if (!row) return null;
-  const { bandId, bandName, bandImageUrl, ...rest } = row;
-  return { ...rest, band: { id: bandId, name: bandName, imageUrl: bandImageUrl } };
 }
 
 /**
