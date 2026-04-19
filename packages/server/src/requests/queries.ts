@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db.js';
 import {
   bandMembers,
@@ -94,13 +94,24 @@ export async function createRequest(
  * Both anchors are left-joined so the response carries whichever one is
  * relevant for each row: `anchorBand` for `musician-for-band`, `anchorGig`
  * for `band-for-gig-slot`. Consumers pick the one matching the row's `kind`.
+ *
+ * Pass `excludeUserId` to hide rows authored by that user — used by the
+ * Opportunities tab so callers don't see (and can't express interest in)
+ * their own requests (MUS-61). Optional so non-authenticated or admin
+ * callers can still fetch the full open list.
  */
 export async function listOpenRequests(filter: {
   kind?: RequestKind;
+  excludeUserId?: number;
 }): Promise<ShapedRequestWithAnchors[]> {
-  const whereClause = filter.kind
-    ? and(eq(requests.status, 'open'), eq(requests.kind, filter.kind))
-    : eq(requests.status, 'open');
+  const conditions = [eq(requests.status, 'open')];
+  if (filter.kind) {
+    conditions.push(eq(requests.kind, filter.kind));
+  }
+  if (filter.excludeUserId !== undefined) {
+    conditions.push(ne(requests.source_user_id, filter.excludeUserId));
+  }
+  const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
 
   const rows = await db
     .select({

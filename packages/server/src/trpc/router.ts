@@ -164,7 +164,12 @@ export const appRouter = router({
       }),
     list: protectedProcedure
       .input(z.object({ kind: z.enum(requestKindEnum.enumValues).optional() }))
-      .query(({ input }) => listOpenRequests({ kind: input.kind })),
+      .query(({ ctx, input }) => {
+        // Exclude the caller's own requests so the Opportunities tab only
+        // shows rows they could actually act on (MUS-61).
+        const excludeUserId = Number(ctx.user.id);
+        return listOpenRequests({ kind: input.kind, excludeUserId });
+      }),
     getById: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
