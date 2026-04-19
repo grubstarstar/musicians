@@ -70,7 +70,7 @@ function PostRequestCta() {
 
 function BandsRow() {
   const router = useRouter();
-  const { data: bands } = useSuspenseQuery(trpc.bands.list.queryOptions());
+  const { data: bands } = useSuspenseQuery(trpc.bands.listMine.queryOptions());
 
   return (
     <CardRow title="Your bands">

@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { getBandProfile, listBands } from '../bands/queries.js';
+import { getBandProfile, listBands, listMyBands } from '../bands/queries.js';
 import {
   countOpenSlots,
   createGig,
@@ -35,6 +35,13 @@ export const appRouter = router({
   }),
   bands: router({
     list: protectedProcedure.query(() => listBands()),
+    // Caller-scoped listing for Home's "Your bands" row (MUS-63). Mirrors the
+    // naming of `requests.listMine` (MUS-55). `list` stays in place because
+    // the Post Request picker and web discovery still want the full list.
+    listMine: protectedProcedure.query(({ ctx }) => {
+      const userId = Number(ctx.user.id);
+      return listMyBands(userId);
+    }),
     getById: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
