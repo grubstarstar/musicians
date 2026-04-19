@@ -146,7 +146,9 @@ function RequestCard({ request, now, refetchKey }: RequestCardProps) {
             <StatusPill status={request.status} />
           </View>
           <Text style={styles.cardSubtitle}>
-            {request.details.instrument}
+            {request.details.kind === "musician-for-band"
+              ? request.details.instrument
+              : null}
             {pendingCount > 0 && ` · ${pendingCount} pending`}
           </Text>
           <Text style={styles.cardMeta}>
@@ -214,7 +216,8 @@ function EoiRow({ eoi, refetchKey }: EoiRowProps) {
   const deciding = respond.isPending;
   const pending = eoi.state === "pending";
   const name = formatUserDisplayName(eoi.targetUser);
-  const notes = eoi.details?.notes;
+  const notes =
+    eoi.details?.kind === "musician-for-band" ? eoi.details.notes : undefined;
 
   return (
     <View style={styles.eoiRow}>

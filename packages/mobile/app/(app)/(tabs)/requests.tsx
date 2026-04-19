@@ -77,17 +77,27 @@ function RequestsList() {
           colors={["#6c63ff"]}
         />
       }
-      renderItem={({ item }) => (
-        <RequestRow
-          id={item.id}
-          bandName={item.band.name}
-          bandImageUrl={item.band.imageUrl}
-          instrument={item.details.instrument}
-          rehearsalCommitment={item.details.rehearsalCommitment}
-          createdAt={new Date(item.createdAt)}
-          now={now}
-        />
-      )}
+      renderItem={({ item }) => {
+        // The query is filtered to `musician-for-band` server-side, but the
+        // return shape is the wider polymorphic union (MUS-56). Narrow here
+        // so the TS discriminated union collapses to the musician branch and
+        // `band` is non-null (musician-for-band rows always anchor to a band).
+        const { details, band } = item;
+        if (details.kind !== "musician-for-band" || band === null) {
+          return null;
+        }
+        return (
+          <RequestRow
+            id={item.id}
+            bandName={band.name}
+            bandImageUrl={band.imageUrl}
+            instrument={details.instrument}
+            rehearsalCommitment={details.rehearsalCommitment}
+            createdAt={new Date(item.createdAt)}
+            now={now}
+          />
+        );
+      }}
     />
   );
 }

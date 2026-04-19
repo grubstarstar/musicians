@@ -93,6 +93,14 @@ function RequestDetailInner({ id }: { id: number }) {
     }),
   );
 
+  // Narrow the polymorphic request shape to the musician-for-band branch.
+  // `getById` only returns rows with a band anchor (innerJoin on bands), so
+  // any other kind would indicate a data issue — treat as not-found.
+  const { details } = data;
+  if (details.kind !== "musician-for-band") {
+    return <RequestNotFound />;
+  }
+
   const submitting = createEoi.isPending;
   const closed = data.status !== "open";
   const canSubmit = !submittedEoi && !closed && !submitting;
@@ -143,14 +151,14 @@ function RequestDetailInner({ id }: { id: number }) {
 
       <Text style={styles.sectionLabel}>Looking for</Text>
       <View style={styles.detailsCard}>
-        <Text style={styles.detailsHeading}>{data.details.instrument}</Text>
-        {data.details.style && (
-          <DetailRow label="Style" value={data.details.style} />
+        <Text style={styles.detailsHeading}>{details.instrument}</Text>
+        {details.style && (
+          <DetailRow label="Style" value={details.style} />
         )}
-        {data.details.rehearsalCommitment && (
+        {details.rehearsalCommitment && (
           <DetailRow
             label="Rehearsal commitment"
-            value={data.details.rehearsalCommitment}
+            value={details.rehearsalCommitment}
           />
         )}
         <DetailRow

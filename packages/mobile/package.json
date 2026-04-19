@@ -8,7 +8,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo/ui": "~55.0.11",
@@ -18,6 +19,7 @@
     "@react-navigation/native": "^7.1.33",
     "@tanstack/react-query": "^5.99.1",
     "@trpc/client": "^11.16.0",
+    "@trpc/server": "^11.16.0",
     "@trpc/tanstack-react-query": "^11.16.0",
     "expo": "~55.0.15",
     "expo-audio": "~55.0.13",
