@@ -1,5 +1,6 @@
 import type { DrawerContentComponentProps } from "@react-navigation/drawer";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../auth/AuthContext";
 import {
   CONTEXT_LABELS,
   useUser,
@@ -8,12 +9,21 @@ import {
 
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { user, currentContext, setCurrentContext } = useUser();
+  const { logout } = useAuth();
   const displayName = user.firstName ?? user.username;
   const showSwitcher = user.availableContexts.length > 1;
 
   function handleSelect(next: UserContextType) {
     setCurrentContext(next);
     props.navigation.closeDrawer();
+  }
+
+  async function handleLogout() {
+    // Close the drawer first so the user sees it dismiss while logout runs.
+    // AuthContext flips status -> unauthenticated, the (app) layout re-renders
+    // and redirects to /login; no explicit navigation needed here.
+    props.navigation.closeDrawer();
+    await logout();
   }
 
   return (
@@ -50,10 +60,8 @@ export function AppDrawer(props: DrawerContentComponentProps) {
 
       <TouchableOpacity
         style={styles.logout}
-        onPress={() => {
-          console.log("logout pressed (stub)");
-          props.navigation.closeDrawer();
-        }}
+        onPress={handleLogout}
+        accessibilityRole="button"
       >
         <Text style={styles.logoutLabel}>Log out</Text>
       </TouchableOpacity>

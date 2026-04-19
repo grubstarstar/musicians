@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import { eq } from 'drizzle-orm';
 import { db } from '../db.js';
 import { users } from '../schema.js';
-import { signToken, verifyToken, buildSetCookieHeader, buildClearCookieHeader, getTokenFromCookie } from '../auth.js';
+import { signToken, verifyToken, buildSetCookieHeader, buildClearCookieHeader, getTokenFromRequest } from '../auth.js';
 
 const authRoutes = new Hono();
 
@@ -39,7 +39,9 @@ authRoutes.post('/logout', (c) => {
 });
 
 authRoutes.get('/me', async (c) => {
-  const token = getTokenFromCookie(c.req.header('cookie'));
+  // Accept either an Authorization bearer token (mobile) or the auth_token
+  // cookie (web). `getTokenFromRequest` checks both in that order.
+  const token = getTokenFromRequest(c.req.raw);
   if (!token) {
     return c.json({ error: 'Unauthorized' }, 401);
   }

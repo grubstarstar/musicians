@@ -1,11 +1,11 @@
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { MusicianHome } from "../../../src/components/home/MusicianHome";
-import { PromoterHome } from "../../../src/components/home/PromoterHome";
-import { RecordingEngineerHome } from "../../../src/components/home/RecordingEngineerHome";
-import { SoundEngineerHome } from "../../../src/components/home/SoundEngineerHome";
-import { VenueRepHome } from "../../../src/components/home/VenueRepHome";
-import { useUser, type UserContextType } from "../../../src/user/UserContext";
+import { MusicianHome } from "../../../../src/components/home/MusicianHome";
+import { PromoterHome } from "../../../../src/components/home/PromoterHome";
+import { RecordingEngineerHome } from "../../../../src/components/home/RecordingEngineerHome";
+import { SoundEngineerHome } from "../../../../src/components/home/SoundEngineerHome";
+import { VenueRepHome } from "../../../../src/components/home/VenueRepHome";
+import { useUser, type UserContextType } from "../../../../src/user/UserContext";
 import { Tabs, useNavigation } from "expo-router";
 import { DrawerActions } from "@react-navigation/native";
 import { FontAwesome6 } from "@expo/vector-icons";

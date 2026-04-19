@@ -317,34 +317,27 @@ curl http://localhost:3001/trpc/system.ping
 ```
 Expect `{"result":{"data":{"ok":true,"at":"..."}}}`. If that works but the mobile app can't reach it, the problem is the URL the device is resolving, not the server.
 
-## Dev-only auth (bearer token on boot)
+## Auth (bearer token from login screen)
 
-Most tRPC procedures — including `bands.list` and `bands.getById` — are `protectedProcedure` and require a JWT. Until the real login UX lands (MUS-49), the mobile app logs in automatically on first request using two env vars:
+Most tRPC procedures — including `bands.list` and `bands.getById` — are `protectedProcedure` and require a JWT. The mobile app presents a login screen on first launch, stores the resulting token in `expo-secure-store` (iOS Keychain / Android Keystore), and attaches it as `Authorization: Bearer <token>` to every tRPC request.
 
-```
-EXPO_PUBLIC_DEV_USERNAME=admin
-EXPO_PUBLIC_DEV_PASSWORD=password123
-```
-
-Both default to the seeded admin credentials, so `pnpm mobile:start` works out of the box against a freshly seeded database. If you need a different identity (e.g. to test a non-admin seeded user), set the vars in the shell before `expo start`:
-
-```
-EXPO_PUBLIC_DEV_USERNAME=alice EXPO_PUBLIC_DEV_PASSWORD=hunter2 pnpm mobile:start
-```
+Seeded admin credentials (same as web): `admin` / `password123`.
 
 Mechanism, in order:
 
-1. `packages/mobile/src/devAuth.ts` exports `getDevAuthToken(apiUrl)`. First call POSTs to `/api/auth/login` with the env-var credentials and caches the returned JWT in memory.
-2. `packages/mobile/src/trpc.ts` wires that into `httpBatchLink({ headers: async () => ... })`, so every tRPC request carries `Authorization: Bearer <token>`.
-3. Concurrent callers share one in-flight login promise — only one network round-trip per app process.
-4. If login fails (bad creds, server down, network error), the helper logs a warning and returns `null`; tRPC calls will then return `UNAUTHORIZED`, which surfaces the problem instead of hiding it.
+1. `packages/mobile/src/auth/AuthContext.tsx` is the single source of truth for auth state (`status`, `user`, `token`, `login()`, `logout()`). On mount it reads any token from secure store, calls `GET /api/auth/me` to verify it's still valid, and — if so — flips `status` to `authenticated` without showing the login screen.
+2. `packages/mobile/src/auth/tokenStorage.ts` wraps `expo-secure-store` (`getItemAsync` / `setItemAsync` / `deleteItemAsync`) with a stable key (`auth_token`). Storage failures fall back to "no token" so the user just gets the login screen rather than a wedged app.
+3. `packages/mobile/src/auth/authToken.ts` holds the current token in a plain module variable. `AuthContext` is the only writer; `packages/mobile/src/trpc.ts`'s `httpBatchLink({ headers })` reads it on every request. Module-scoped (rather than context-closure) because the tRPC client is constructed at module load, before any provider mounts, and we want login/logout to take effect on the very next request without rebuilding the client.
+4. `packages/mobile/src/auth/unauthorizedHandler.ts` is the glue for 401 handling. `AuthContext` registers a handler on mount; `packages/mobile/src/trpc.ts`'s `QueryCache`/`MutationCache` `onError` callbacks call it whenever a tRPC call fails with `TRPCClientError` code `UNAUTHORIZED`. The handler logs out, which clears the token, calls `queryClient.clear()`, and redirects to `/login`.
+5. File-based routing in `packages/mobile/app/` is split into two groups: `(app)/_layout.tsx` is the authed drawer + tabs tree and redirects to `/login` if `status === "unauthenticated"`; `login.tsx` is the unauthed entry.
+
+The login form lives in `packages/mobile/app/login.tsx` and POSTs `/api/auth/login`. The server returns `{ token, username }`; mobile stores the token and ignores the `Set-Cookie` header (harmless on native; web consumes it).
 
 Caveats, by design:
 
-- Token lives in memory only. Reloading Metro or relaunching the app re-logs-in.
-- No refresh / expiry handling. JWTs are 7-day-lived, so this is fine for dev; MUS-49 handles real-world expiry.
-- No `expo-secure-store`, no biometrics, no logout. All of that belongs to the auth UX ticket.
-- Web continues to use cookie auth via the existing REST flow — this file only affects `@musicians/mobile`.
+- No refresh / expiry handling. JWTs are 7-day-lived and `AuthContext` silently logs out when the server says the token is no longer valid. Long-lived tokens and refresh flows are out of scope (future ticket).
+- No biometric gating. If a user has secure-store unlock tied to the device passcode, the OS handles it transparently; we don't add an additional biometric prompt.
+- Web continues to use cookie auth via the existing REST flow — this whole section only affects `@musicians/mobile`.
 
 ## Reference
 

@@ -16,8 +16,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { PingCard } from "../../src/components/PingCard";
-import { queryClient } from "../../src/trpc";
+import { PingCard } from "../../../src/components/PingCard";
+import { queryClient } from "../../../src/trpc";
 
 const bands = [
   { id: "1", name: "Lit Allusions" },

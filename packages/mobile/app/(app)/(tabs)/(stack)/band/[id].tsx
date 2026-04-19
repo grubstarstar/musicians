@@ -5,13 +5,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { CollapsibleSection } from "../../../../src/components/CollapsibleSection";
-import { QueryBoundary } from "../../../../src/components/QueryBoundary";
-import { TimelineList } from "../../../../src/components/home/TimelineList";
-import { TrackList } from "../../../../src/components/band/TrackList";
-import { ChipRow } from "../../../../src/components/home/ChipRow";
-import { useImageColors } from "../../../../src/hooks/useImageColors";
-import { trpc } from "../../../../src/trpc";
+import { CollapsibleSection } from "../../../../../src/components/CollapsibleSection";
+import { QueryBoundary } from "../../../../../src/components/QueryBoundary";
+import { TimelineList } from "../../../../../src/components/home/TimelineList";
+import { TrackList } from "../../../../../src/components/band/TrackList";
+import { ChipRow } from "../../../../../src/components/home/ChipRow";
+import { useImageColors } from "../../../../../src/hooks/useImageColors";
+import { trpc } from "../../../../../src/trpc";
 
 const HERO_FALLBACK = "#0f0f11";
 

@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useAuth } from "../auth/AuthContext";
 
 export type UserContextType =
   | "musician"
@@ -21,27 +22,25 @@ export const CONTEXT_LABELS: Record<UserContextType, string> = {
   venue_rep: "Venue representative",
 };
 
-export interface MockUser {
+export interface AppUser {
   username: string;
   firstName: string | null;
   availableContexts: UserContextType[];
 }
 
-// Flip `availableContexts` to a single entry to exercise the single-context UI.
-const MOCK_USER: MockUser = {
-  username: "rich",
-  firstName: "Richard",
-  availableContexts: [
-    "musician",
-    "promoter",
-    "recording_engineer",
-    "sound_engineer",
-    "venue_rep",
-  ],
-};
+// Until we have per-user role data on the server (MUS-6 work), every
+// authenticated user gets every context. Swap for a real fetch in the next
+// ticket that surfaces role data to mobile.
+const DEFAULT_CONTEXTS: UserContextType[] = [
+  "musician",
+  "promoter",
+  "recording_engineer",
+  "sound_engineer",
+  "venue_rep",
+];
 
 interface UserContextValue {
-  user: MockUser;
+  user: AppUser;
   currentContext: UserContextType;
   setCurrentContext: (next: UserContextType) => void;
 }
@@ -49,14 +48,24 @@ interface UserContextValue {
 const UserContextCtx = createContext<UserContextValue | null>(null);
 
 export function UserProvider({ children }: { children: ReactNode }) {
+  const { user: authUser } = useAuth();
   const [currentContext, setCurrentContext] = useState<UserContextType>(
-    MOCK_USER.availableContexts[0]
+    DEFAULT_CONTEXTS[0],
   );
 
-  const value = useMemo<UserContextValue>(
-    () => ({ user: MOCK_USER, currentContext, setCurrentContext }),
-    [currentContext]
-  );
+  const value = useMemo<UserContextValue>(() => {
+    // UserProvider is only mounted inside the auth gate, so authUser should
+    // never be null here. Fail loudly if the tree is wired wrong.
+    if (!authUser) {
+      throw new Error("UserProvider requires an authenticated user");
+    }
+    const appUser: AppUser = {
+      username: authUser.username,
+      firstName: null,
+      availableContexts: DEFAULT_CONTEXTS,
+    };
+    return { user: appUser, currentContext, setCurrentContext };
+  }, [authUser, currentContext]);
 
   return (
     <UserContextCtx.Provider value={value}>{children}</UserContextCtx.Provider>
