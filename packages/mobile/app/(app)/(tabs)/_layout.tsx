@@ -31,9 +31,9 @@ export default function TabsRoots() {
       <Tabs.Screen
         name="requests"
         options={{
-          tabBarLabel: "Discover",
+          tabBarLabel: "Notices",
           tabBarIcon: () => (
-            <Ionicons name="compass-outline" size={24} color="white" />
+            <Ionicons name="newspaper-outline" size={22} color="white" />
           ),
         }}
       />

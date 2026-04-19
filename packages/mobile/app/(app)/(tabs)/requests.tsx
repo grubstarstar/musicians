@@ -20,7 +20,7 @@ export default function RequestsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["left", "right", "top"]}>
       <View style={styles.headerWrap}>
-        <Text style={styles.heading}>Discover</Text>
+        <Text style={styles.heading}>Notices</Text>
         <Text style={styles.subheading}>
           Bands looking for musicians right now
         </Text>
@@ -59,7 +59,7 @@ function RequestsList() {
   if (data.length === 0) {
     return (
       <View style={styles.emptyWrap}>
-        <Text style={styles.emptyText}>Nothing to discover right now</Text>
+        <Text style={styles.emptyText}>No notices right now</Text>
       </View>
     );
   }
