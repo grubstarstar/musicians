@@ -58,6 +58,13 @@ function RequestDetailInner({ id }: { id: number }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedGigId, setSelectedGigId] = useState<number | null>(null);
   const [selectedBandId, setSelectedBandId] = useState<number | null>(null);
+  // MUS-58: venue rep picks a venue + proposed date when replying to a
+  // night-at-venue request.
+  const [selectedVenueId, setSelectedVenueId] = useState<number | null>(null);
+  const [pickedDate, setPickedDate] = useState<string | null>(null);
+  // MUS-58: promoter sets an optional concept when replying to a
+  // promoter-for-venue-night request.
+  const [conceptOverride, setConceptOverride] = useState("");
 
   // The self-authored + already-pending guards are enforced by the server
   // (FORBIDDEN / CONFLICT respectively) and surfaced here via the mutation
@@ -71,6 +78,9 @@ function RequestDetailInner({ id }: { id: number }) {
   const { data: me } = useSuspenseQuery(trpc.system.whoami.queryOptions());
   const { data: allBands } = useSuspenseQuery(trpc.bands.list.queryOptions());
   const { data: myGigs } = useSuspenseQuery(trpc.gigs.listMine.queryOptions());
+  const { data: allVenues } = useSuspenseQuery(
+    trpc.venues.list.queryOptions(),
+  );
   const myBandIds = allBands
     .filter((b) => b.members.some((m) => m.id === Number(me.id)))
     .map((b) => b.id);
@@ -356,6 +366,251 @@ function RequestDetailInner({ id }: { id: number }) {
           error={error}
           onSubmit={handleSubmit}
           submittedMessage="Offer sent. The band will review and respond."
+        />
+      </DetailLayout>
+    );
+  }
+
+  // --- night-at-venue: caller is a venue rep; pick a venue + date ---------
+  if (details.kind === "night-at-venue") {
+    const canSubmit =
+      !submittedEoi &&
+      !closed &&
+      !submitting &&
+      selectedVenueId !== null &&
+      pickedDate !== null;
+    function handleSubmit() {
+      if (!canSubmit || selectedVenueId === null || pickedDate === null) return;
+      if (details.kind !== "night-at-venue") return;
+      createEoi.mutate({
+        requestId: id,
+        details: {
+          kind: "night-at-venue",
+          venueId: selectedVenueId,
+          proposedDate: pickedDate,
+        },
+      });
+    }
+    return (
+      <DetailLayout
+        router={router}
+        band={null}
+        createdAt={createdAt}
+        now={now}
+        heading={details.concept}
+        extraRows={[
+          {
+            label: "Possible dates",
+            value: details.possibleDates.join(", "),
+          },
+        ]}
+        closed={closed}
+        closedStatus={data.status}
+      >
+        <Text style={styles.sectionLabel}>Pick a date</Text>
+        <View style={styles.pickerList}>
+          {details.possibleDates.map((d) => {
+            const selected = d === pickedDate;
+            return (
+              <Pressable
+                key={d}
+                onPress={() => setPickedDate(d)}
+                style={({ pressed }) => [
+                  styles.pickerOption,
+                  selected && styles.pickerOptionSelected,
+                  pressed && styles.pickerOptionPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+              >
+                <Text style={styles.pickerOptionText}>{d}</Text>
+                {selected && (
+                  <Ionicons name="checkmark" size={18} color="#6c63ff" />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.sectionLabel}>Pick a venue</Text>
+        {allVenues.length === 0 ? (
+          <View style={styles.closedCard}>
+            <Text style={styles.closedTitle}>No venues on file</Text>
+            <Text style={styles.closedBody}>
+              Venues are seeded by the admin — ask a maintainer to add one.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.pickerList}>
+            {allVenues.map((v) => {
+              const selected = v.id === selectedVenueId;
+              return (
+                <Pressable
+                  key={v.id}
+                  onPress={() => setSelectedVenueId(v.id)}
+                  style={({ pressed }) => [
+                    styles.pickerOption,
+                    selected && styles.pickerOptionSelected,
+                    pressed && styles.pickerOptionPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                >
+                  <Text style={styles.pickerOptionText}>{v.name}</Text>
+                  {selected && (
+                    <Ionicons name="checkmark" size={18} color="#6c63ff" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        <SubmitBlock
+          submittedEoi={submittedEoi}
+          submitting={submitting}
+          canSubmit={canSubmit}
+          error={error}
+          onSubmit={handleSubmit}
+          submittedMessage="Offer sent. Acceptance will create a draft gig for you both."
+        />
+      </DetailLayout>
+    );
+  }
+
+  // --- promoter-for-venue-night: caller is a promoter --------------------
+  if (details.kind === "promoter-for-venue-night") {
+    const canSubmit = !submittedEoi && !closed && !submitting;
+    function handleSubmit() {
+      if (!canSubmit) return;
+      const concept = conceptOverride.trim();
+      createEoi.mutate({
+        requestId: id,
+        details: {
+          kind: "promoter-for-venue-night",
+          ...(concept.length > 0 ? { concept } : {}),
+        },
+      });
+    }
+    // Resolve venue name from the venues list.
+    const venue = allVenues.find((v) => v.id === details.venueId) ?? null;
+    const heading = venue
+      ? `${venue.name} — free on ${details.proposedDate}`
+      : `A venue is free on ${details.proposedDate}`;
+    return (
+      <DetailLayout
+        router={router}
+        band={null}
+        createdAt={createdAt}
+        now={now}
+        heading={heading}
+        extraRows={[
+          details.concept
+            ? { label: "Concept", value: details.concept }
+            : null,
+          venue ? { label: "Venue", value: venue.name } : null,
+          { label: "Date", value: details.proposedDate },
+        ]}
+        closed={closed}
+        closedStatus={data.status}
+      >
+        <Text style={styles.sectionLabel}>Your concept (optional)</Text>
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          value={conceptOverride}
+          onChangeText={setConceptOverride}
+          multiline
+          numberOfLines={3}
+          placeholder="What kind of night would you run here?"
+          placeholderTextColor="#555"
+          editable={!submittedEoi && !submitting}
+        />
+        <SubmitBlock
+          submittedEoi={submittedEoi}
+          submitting={submitting}
+          canSubmit={canSubmit}
+          error={error}
+          onSubmit={handleSubmit}
+          submittedMessage="Offer sent. Acceptance will create a draft gig for you."
+        />
+      </DetailLayout>
+    );
+  }
+
+  // --- band-for-musician: caller is a band member, pick one of their bands
+  if (details.kind === "band-for-musician") {
+    const candidateBands = allBands.filter((b) => myBandIds.includes(b.id));
+    const canSubmit =
+      !submittedEoi &&
+      !closed &&
+      !submitting &&
+      selectedBandId !== null &&
+      candidateBands.length > 0;
+    function handleSubmit() {
+      if (!canSubmit || selectedBandId === null) return;
+      createEoi.mutate({
+        requestId: id,
+        details: { kind: "band-for-musician", bandId: selectedBandId },
+      });
+    }
+    return (
+      <DetailLayout
+        router={router}
+        band={null}
+        createdAt={createdAt}
+        now={now}
+        heading={`Musician looking for a band — ${details.instrument}`}
+        extraRows={[
+          details.availability
+            ? { label: "Availability", value: details.availability }
+            : null,
+          details.demosUrl ? { label: "Demos", value: details.demosUrl } : null,
+        ]}
+        closed={closed}
+        closedStatus={data.status}
+      >
+        <Text style={styles.sectionLabel}>Offer one of your bands</Text>
+        {candidateBands.length === 0 ? (
+          <View style={styles.closedCard}>
+            <Text style={styles.closedTitle}>
+              You&apos;re not a member of any band yet
+            </Text>
+            <Text style={styles.closedBody}>
+              Join or create a band first to offer this musician a slot.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.pickerList}>
+            {candidateBands.map((b) => {
+              const selected = b.id === selectedBandId;
+              return (
+                <Pressable
+                  key={b.id}
+                  onPress={() => setSelectedBandId(b.id)}
+                  style={({ pressed }) => [
+                    styles.pickerOption,
+                    selected && styles.pickerOptionSelected,
+                    pressed && styles.pickerOptionPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                >
+                  <Text style={styles.pickerOptionText}>{b.name}</Text>
+                  {selected && (
+                    <Ionicons name="checkmark" size={18} color="#6c63ff" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        <SubmitBlock
+          submittedEoi={submittedEoi}
+          submitting={submitting}
+          canSubmit={canSubmit}
+          error={error}
+          onSubmit={handleSubmit}
+          submittedMessage="Offer sent. The musician will review and respond."
         />
       </DetailLayout>
     );

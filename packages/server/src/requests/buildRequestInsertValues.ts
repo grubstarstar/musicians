@@ -31,6 +31,32 @@ export type RequestCreateInput =
       targetDate: string; // ISO yyyy-mm-dd
       area?: string;
       feeAsked?: number;
+    }
+  // `night-at-venue` (MUS-58): promoter-side request, no anchor object.
+  // Acceptance creates a `gigs` row from the EoI payload (venue rep supplies
+  // venueId + proposedDate). Slot_count is always 1 — one accept per concept.
+  | {
+      kind: 'night-at-venue';
+      concept: string;
+      possibleDates: string[];
+    }
+  // `promoter-for-venue-night` (MUS-58): venue-side request, no anchor
+  // object. Acceptance creates a `gigs` row anchored to the request's
+  // venue + date, organised by the accepting promoter.
+  | {
+      kind: 'promoter-for-venue-night';
+      venueId: number;
+      proposedDate: string;
+      concept?: string;
+    }
+  // `band-for-musician` (MUS-58): musician-side request, no anchor object.
+  // Anchor lives on the EoI side — the accepting band member supplies the
+  // bandId they represent. Free-text instrument for this slice.
+  | {
+      kind: 'band-for-musician';
+      instrument: string;
+      availability?: string;
+      demosUrl?: string;
     };
 
 export interface RequestInsertValues {
@@ -91,17 +117,81 @@ export function buildRequestInsertValues(
     };
   }
 
-  // gig-for-band (MUS-57): band is source, no anchor object. Exactly one slot
-  // — acceptance fills the band into one gig slot on the EoI-referenced gig.
+  if (input.kind === 'gig-for-band') {
+    // gig-for-band (MUS-57): band is source, no anchor object. Exactly one slot
+    // — acceptance fills the band into one gig slot on the EoI-referenced gig.
+    const details: RequestDetails = {
+      kind: 'gig-for-band',
+      bandId: input.bandId,
+      targetDate: input.targetDate,
+      ...(input.area !== undefined ? { area: input.area } : {}),
+      ...(input.feeAsked !== undefined ? { feeAsked: input.feeAsked } : {}),
+    };
+    return {
+      kind: 'gig-for-band',
+      source_user_id: userId,
+      anchor_band_id: null,
+      anchor_gig_id: null,
+      details,
+      slot_count: 1,
+      slots_filled: 0,
+      status: 'open',
+    };
+  }
+
+  if (input.kind === 'night-at-venue') {
+    // night-at-venue (MUS-58): promoter is source, no anchor object. Exactly
+    // one accept per concept (slot_count = 1) — acceptance creates a draft gig
+    // from the venue rep's EoI payload.
+    const details: RequestDetails = {
+      kind: 'night-at-venue',
+      concept: input.concept,
+      possibleDates: input.possibleDates,
+    };
+    return {
+      kind: 'night-at-venue',
+      source_user_id: userId,
+      anchor_band_id: null,
+      anchor_gig_id: null,
+      details,
+      slot_count: 1,
+      slots_filled: 0,
+      status: 'open',
+    };
+  }
+
+  if (input.kind === 'promoter-for-venue-night') {
+    // promoter-for-venue-night (MUS-58): venue rep is source, no anchor.
+    // Exactly one accept per night (slot_count = 1).
+    const details: RequestDetails = {
+      kind: 'promoter-for-venue-night',
+      venueId: input.venueId,
+      proposedDate: input.proposedDate,
+      ...(input.concept !== undefined ? { concept: input.concept } : {}),
+    };
+    return {
+      kind: 'promoter-for-venue-night',
+      source_user_id: userId,
+      anchor_band_id: null,
+      anchor_gig_id: null,
+      details,
+      slot_count: 1,
+      slots_filled: 0,
+      status: 'open',
+    };
+  }
+
+  // band-for-musician (MUS-58): musician is source, no anchor object. Exactly
+  // one accept per request — the musician joins the band the EoI creator
+  // specifies. Slot_count = 1.
   const details: RequestDetails = {
-    kind: 'gig-for-band',
-    bandId: input.bandId,
-    targetDate: input.targetDate,
-    ...(input.area !== undefined ? { area: input.area } : {}),
-    ...(input.feeAsked !== undefined ? { feeAsked: input.feeAsked } : {}),
+    kind: 'band-for-musician',
+    instrument: input.instrument,
+    ...(input.availability !== undefined ? { availability: input.availability } : {}),
+    ...(input.demosUrl !== undefined ? { demosUrl: input.demosUrl } : {}),
   };
   return {
-    kind: 'gig-for-band',
+    kind: 'band-for-musician',
     source_user_id: userId,
     anchor_band_id: null,
     anchor_gig_id: null,

@@ -18,8 +18,11 @@ import { QueryBoundary } from "../../../../src/components/QueryBoundary";
 import { queryClient, trpc } from "../../../../src/trpc";
 import {
   buildBandForGigSlotInput,
+  buildBandForMusicianInput,
   buildGigForBandInput,
   buildMusicianForBandInput,
+  buildNightAtVenueInput,
+  buildPromoterForVenueNightInput,
   filterMyBands,
 } from "../../../../src/utils/requestInputs";
 
@@ -28,7 +31,10 @@ import {
 type RequestKind =
   | "musician-for-band"
   | "band-for-gig-slot"
-  | "gig-for-band";
+  | "gig-for-band"
+  | "night-at-venue"
+  | "promoter-for-venue-night"
+  | "band-for-musician";
 
 const KIND_OPTIONS: { value: RequestKind; label: string; blurb: string }[] = [
   {
@@ -46,7 +52,24 @@ const KIND_OPTIONS: { value: RequestKind; label: string; blurb: string }[] = [
     label: "Gig for my band",
     blurb: "We're a band and we're looking for a gig on a specific date.",
   },
+  {
+    value: "night-at-venue",
+    label: "Night at a venue",
+    blurb: "I'm a promoter with a concept and possible dates; I need a venue.",
+  },
+  {
+    value: "promoter-for-venue-night",
+    label: "Promoter for a venue night",
+    blurb: "I represent a venue with a free night; I need a promoter to run it.",
+  },
+  {
+    value: "band-for-musician",
+    label: "Band for me",
+    blurb: "I play an instrument and I'm looking to join a band.",
+  },
 ];
+
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function PostRequestScreen() {
   return (
@@ -75,6 +98,9 @@ function PostRequestForm() {
   const { data: me } = useSuspenseQuery(trpc.system.whoami.queryOptions());
   const { data: allBands } = useSuspenseQuery(trpc.bands.list.queryOptions());
   const { data: myGigs } = useSuspenseQuery(trpc.gigs.listMine.queryOptions());
+  const { data: allVenues } = useSuspenseQuery(
+    trpc.venues.list.queryOptions(),
+  );
 
   const myBands = useMemo(
     () => filterMyBands(allBands, me.id),
@@ -106,6 +132,26 @@ function PostRequestForm() {
   const [area, setArea] = useState("");
   const [feeAsked, setFeeAsked] = useState("");
 
+  // night-at-venue form state. `possibleDates` is a chip list; `dateDraft`
+  // is the pending input before tapping Add. No native date picker — the
+  // ticket says any reasonable RN pattern is fine and we're matching the
+  // existing gig-for-band yyyy-mm-dd text approach rather than pulling a
+  // new dep.
+  const [concept, setConcept] = useState("");
+  const [dateDraft, setDateDraft] = useState("");
+  const [possibleDates, setPossibleDates] = useState<string[]>([]);
+
+  // promoter-for-venue-night form state. Reuses `concept` + `proposedDate`
+  // (not `targetDate`, different semantics) and a venue picker.
+  const [selectedVenueId, setSelectedVenueId] = useState<number | null>(null);
+  const [venuePickerOpen, setVenuePickerOpen] = useState(false);
+  const [proposedDate, setProposedDate] = useState("");
+
+  // band-for-musician form state. Free-text instrument per the ticket.
+  const [bandForMeInstrument, setBandForMeInstrument] = useState("");
+  const [availability, setAvailability] = useState("");
+  const [demosUrl, setDemosUrl] = useState("");
+
   const [error, setError] = useState<string | null>(null);
   // Tracks which request was just created so we can show the suggestion card
   // keyed on that specific id before navigating away.
@@ -131,10 +177,14 @@ function PostRequestForm() {
 
   const hasBands = myBands.length > 0;
   const hasGigs = myGigs.length > 0;
+  const hasVenues = allVenues.length > 0;
   const selectedBand = myBands.find((b) => b.id === selectedBandId) ?? null;
   const selectedGig = myGigs.find((g) => g.id === selectedGigId) ?? null;
+  const selectedVenue =
+    allVenues.find((v) => v.id === selectedVenueId) ?? null;
 
-  const targetDateValid = /^\d{4}-\d{2}-\d{2}$/.test(targetDate.trim());
+  const targetDateValid = ISO_DAY_RE.test(targetDate.trim());
+  const proposedDateValid = ISO_DAY_RE.test(proposedDate.trim());
 
   const canSubmit =
     !submitting &&
@@ -145,8 +195,16 @@ function PostRequestForm() {
         ? hasGigs &&
           selectedGigId !== null &&
           (selectedGig?.openSlots ?? 0) > 0
-        : // gig-for-band
-          hasBands && selectedBandId !== null && targetDateValid);
+        : kind === "gig-for-band"
+          ? hasBands && selectedBandId !== null && targetDateValid
+          : kind === "night-at-venue"
+            ? concept.trim().length > 0 && possibleDates.length > 0
+            : kind === "promoter-for-venue-night"
+              ? hasVenues &&
+                selectedVenueId !== null &&
+                proposedDateValid
+              : // band-for-musician
+                bandForMeInstrument.trim().length > 0);
 
   function handleSubmit() {
     if (!canSubmit) return;
@@ -184,7 +242,62 @@ function PostRequestForm() {
         return;
       }
       createRequest.mutate(payload);
+      return;
     }
+    if (kind === "night-at-venue") {
+      const payload = buildNightAtVenueInput({ concept, possibleDates });
+      if (!payload) {
+        setError("Enter a concept and at least one yyyy-mm-dd date.");
+        return;
+      }
+      createRequest.mutate(payload);
+      return;
+    }
+    if (kind === "promoter-for-venue-night" && selectedVenueId !== null) {
+      const payload = buildPromoterForVenueNightInput({
+        venueId: selectedVenueId,
+        proposedDate,
+        concept,
+      });
+      if (!payload) {
+        setError(
+          "Proposed date must be in yyyy-mm-dd format (e.g. 2026-05-10)",
+        );
+        return;
+      }
+      createRequest.mutate(payload);
+      return;
+    }
+    if (kind === "band-for-musician") {
+      const payload = buildBandForMusicianInput({
+        instrument: bandForMeInstrument,
+        availability,
+        demosUrl,
+      });
+      if (!payload) {
+        setError("Enter an instrument to continue.");
+        return;
+      }
+      createRequest.mutate(payload);
+    }
+  }
+
+  /** Add the current `dateDraft` to `possibleDates` if valid; silently
+   *  ignores duplicates and invalid strings (the Add button is disabled in
+   *  those cases, but a paranoid guard keeps the state clean). */
+  function addPossibleDate() {
+    const trimmed = dateDraft.trim();
+    if (!ISO_DAY_RE.test(trimmed)) return;
+    if (possibleDates.includes(trimmed)) {
+      setDateDraft("");
+      return;
+    }
+    setPossibleDates((prev) => [...prev, trimmed].sort());
+    setDateDraft("");
+  }
+
+  function removePossibleDate(date: string) {
+    setPossibleDates((prev) => prev.filter((d) => d !== date));
   }
 
   return (
@@ -269,7 +382,7 @@ function PostRequestForm() {
           setFeeOffered={setFeeOffered}
           submitting={submitting || createdRequestId !== null}
         />
-      ) : (
+      ) : kind === "gig-for-band" ? (
         <GigForBandForm
           hasBands={hasBands}
           myBands={myBands}
@@ -284,6 +397,42 @@ function PostRequestForm() {
           setArea={setArea}
           feeAsked={feeAsked}
           setFeeAsked={setFeeAsked}
+          submitting={submitting || createdRequestId !== null}
+        />
+      ) : kind === "night-at-venue" ? (
+        <NightAtVenueForm
+          concept={concept}
+          setConcept={setConcept}
+          dateDraft={dateDraft}
+          setDateDraft={setDateDraft}
+          possibleDates={possibleDates}
+          onAddDate={addPossibleDate}
+          onRemoveDate={removePossibleDate}
+          submitting={submitting || createdRequestId !== null}
+        />
+      ) : kind === "promoter-for-venue-night" ? (
+        <PromoterForVenueNightForm
+          hasVenues={hasVenues}
+          allVenues={allVenues}
+          selectedVenue={selectedVenue}
+          selectedVenueId={selectedVenueId}
+          setSelectedVenueId={setSelectedVenueId}
+          pickerOpen={venuePickerOpen}
+          setPickerOpen={setVenuePickerOpen}
+          proposedDate={proposedDate}
+          setProposedDate={setProposedDate}
+          concept={concept}
+          setConcept={setConcept}
+          submitting={submitting || createdRequestId !== null}
+        />
+      ) : (
+        <BandForMusicianForm
+          instrument={bandForMeInstrument}
+          setInstrument={setBandForMeInstrument}
+          availability={availability}
+          setAvailability={setAvailability}
+          demosUrl={demosUrl}
+          setDemosUrl={setDemosUrl}
           submitting={submitting || createdRequestId !== null}
         />
       )}
@@ -314,7 +463,7 @@ function PostRequestForm() {
         </Pressable>
       ) : (
         <>
-          {(kind === "band-for-gig-slot" || kind === "gig-for-band") && (
+          {kind !== "musician-for-band" && (
             <QueryBoundary>
               <MatchSuggestionsCard
                 createdRequestId={createdRequestId}
@@ -345,7 +494,10 @@ function PostRequestForm() {
 
 interface MatchSuggestionsCardProps {
   createdRequestId: number;
-  createdKind: "band-for-gig-slot" | "gig-for-band";
+  // MUS-58: `musician-for-band` doesn't surface counterpart matches here
+  // (we fall through to the musician-to-bands flow elsewhere), but every
+  // other kind shows a suggestions card.
+  createdKind: Exclude<RequestKind, "musician-for-band">;
 }
 
 function MatchSuggestionsCard({
@@ -375,8 +527,7 @@ function MatchSuggestionsCard({
     );
   }
 
-  const counterpartNoun =
-    createdKind === "band-for-gig-slot" ? "bands" : "promoters";
+  const counterpartNoun = counterpartNounFor(createdKind);
 
   return (
     <View style={styles.matchCard}>
@@ -396,11 +547,7 @@ function MatchSuggestionsCard({
               pressed && styles.matchRowPressed,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={
-              m.counterpart.kind === "gig-for-band"
-                ? `View ${m.counterpart.bandName ?? "band"} looking for a gig on ${m.counterpart.targetDate}`
-                : `View gig slot on ${formatCounterpartDate(m.counterpart.gigDatetime)}`
-            }
+            accessibilityLabel={matchRowLabel(m.counterpart)}
           >
             <Text style={styles.matchRowText}>
               {matchRowLabel(m.counterpart)}
@@ -413,12 +560,37 @@ function MatchSuggestionsCard({
   );
 }
 
+function counterpartNounFor(kind: Exclude<RequestKind, "musician-for-band">): string {
+  switch (kind) {
+    case "band-for-gig-slot":
+      return "bands";
+    case "gig-for-band":
+      return "promoters";
+    case "night-at-venue":
+      return "venues";
+    case "promoter-for-venue-night":
+      return "promoters";
+    case "band-for-musician":
+      return "bands";
+  }
+}
+
 type MatchCounterpart = {
-  kind: "band-for-gig-slot" | "gig-for-band";
+  kind:
+    | "band-for-gig-slot"
+    | "gig-for-band"
+    | "night-at-venue"
+    | "promoter-for-venue-night"
+    | "musician-for-band"
+    | "band-for-musician";
   bandName: string | null;
   targetDate: string | null;
   gigDatetime: Date | string | null;
   gigVenueName: string | null;
+  instrument: string | null;
+  proposedDate: string | null;
+  venueName: string | null;
+  possibleDates: string[] | null;
 };
 
 function matchRowLabel(c: MatchCounterpart): string {
@@ -427,9 +599,31 @@ function matchRowLabel(c: MatchCounterpart): string {
     const date = c.targetDate ?? "";
     return `${who} — looking for a gig ${date}`.trim();
   }
-  const date = formatCounterpartDate(c.gigDatetime);
-  const venue = c.gigVenueName ?? "a venue";
-  return `Gig slot at ${venue}${date ? ` on ${date}` : ""}`;
+  if (c.kind === "band-for-gig-slot") {
+    const date = formatCounterpartDate(c.gigDatetime);
+    const venue = c.gigVenueName ?? "a venue";
+    return `Gig slot at ${venue}${date ? ` on ${date}` : ""}`;
+  }
+  if (c.kind === "night-at-venue") {
+    const when =
+      c.possibleDates !== null && c.possibleDates.length > 0
+        ? ` on ${c.possibleDates.slice(0, 3).join(", ")}`
+        : "";
+    return `Promoter wants to run a night${when}`;
+  }
+  if (c.kind === "promoter-for-venue-night") {
+    const venue = c.venueName ?? "a venue";
+    const date = c.proposedDate ?? "";
+    return `${venue} free ${date}`.trim();
+  }
+  if (c.kind === "musician-for-band") {
+    const who = c.bandName ?? "A band";
+    const what = c.instrument ?? "a musician";
+    return `${who} — looking for a ${what}`;
+  }
+  // band-for-musician
+  const what = c.instrument ?? "an instrument";
+  return `Musician plays ${what}`;
 }
 
 function formatCounterpartDate(
@@ -836,6 +1030,266 @@ function GigForBandForm(props: {
   );
 }
 
+// --- Sub-form: night-at-venue --------------------------------------------
+
+function NightAtVenueForm(props: {
+  concept: string;
+  setConcept: (v: string) => void;
+  dateDraft: string;
+  setDateDraft: (v: string) => void;
+  possibleDates: string[];
+  onAddDate: () => void;
+  onRemoveDate: (date: string) => void;
+  submitting: boolean;
+}) {
+  const canAddDraft = ISO_DAY_RE.test(props.dateDraft.trim());
+
+  return (
+    <View style={styles.form}>
+      <Text style={styles.label}>Concept</Text>
+      <TextInput
+        style={styles.input}
+        value={props.concept}
+        onChangeText={props.setConcept}
+        autoCapitalize="sentences"
+        autoCorrect
+        placeholder="e.g. Saturday jazz showcase"
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+        returnKeyType="next"
+      />
+
+      <Text style={styles.label}>Possible dates (yyyy-mm-dd)</Text>
+      <View style={styles.dateAddRow}>
+        <TextInput
+          style={[styles.input, styles.dateAddInput]}
+          value={props.dateDraft}
+          onChangeText={props.setDateDraft}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="2026-05-10"
+          placeholderTextColor="#555"
+          editable={!props.submitting}
+          returnKeyType="done"
+          onSubmitEditing={() => {
+            if (canAddDraft) props.onAddDate();
+          }}
+        />
+        <Pressable
+          onPress={props.onAddDate}
+          disabled={!canAddDraft || props.submitting}
+          style={({ pressed }) => [
+            styles.dateAddBtn,
+            (!canAddDraft || props.submitting) && styles.buttonDisabled,
+            pressed && canAddDraft && !props.submitting && styles.buttonPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Add date"
+          accessibilityState={{ disabled: !canAddDraft || props.submitting }}
+        >
+          <Ionicons name="add" size={20} color="#fff" />
+        </Pressable>
+      </View>
+      {props.possibleDates.length === 0 ? (
+        <Text style={styles.helperText}>
+          Add one or more dates you could run the night on.
+        </Text>
+      ) : (
+        <View style={styles.chipWrap}>
+          {props.possibleDates.map((d) => (
+            <Pressable
+              key={d}
+              onPress={() => props.onRemoveDate(d)}
+              style={({ pressed }) => [
+                styles.chip,
+                pressed && styles.chipPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${d}`}
+              disabled={props.submitting}
+            >
+              <Text style={styles.chipText}>{d}</Text>
+              <Ionicons name="close" size={14} color="#c8c8d0" />
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// --- Sub-form: promoter-for-venue-night ----------------------------------
+
+interface VenuePick {
+  id: number;
+  name: string;
+  address: string;
+}
+
+function PromoterForVenueNightForm(props: {
+  hasVenues: boolean;
+  allVenues: VenuePick[];
+  selectedVenue: VenuePick | null;
+  selectedVenueId: number | null;
+  setSelectedVenueId: (id: number) => void;
+  pickerOpen: boolean;
+  setPickerOpen: (f: (v: boolean) => boolean) => void;
+  proposedDate: string;
+  setProposedDate: (v: string) => void;
+  concept: string;
+  setConcept: (v: string) => void;
+  submitting: boolean;
+}) {
+  if (!props.hasVenues) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyTitle}>No venues on file yet</Text>
+        <Text style={styles.emptyBody}>
+          Venues are seeded by the admin. Ask the maintainers to add one
+          before posting this kind of request.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.form}>
+      <Text style={styles.label}>Venue</Text>
+      <Pressable
+        onPress={() => props.setPickerOpen((v) => !v)}
+        style={[styles.input, styles.pickerField]}
+        accessibilityRole="button"
+        accessibilityLabel="Select a venue"
+        accessibilityState={{ expanded: props.pickerOpen }}
+        disabled={props.submitting}
+      >
+        <Text
+          style={[
+            styles.pickerText,
+            !props.selectedVenue && styles.pickerPlaceholder,
+          ]}
+        >
+          {props.selectedVenue ? props.selectedVenue.name : "Select a venue"}
+        </Text>
+        <Ionicons
+          name={props.pickerOpen ? "chevron-up" : "chevron-down"}
+          size={18}
+          color="#7a7a85"
+        />
+      </Pressable>
+      {props.pickerOpen && (
+        <View style={styles.pickerList}>
+          {props.allVenues.map((venue) => {
+            const isSelected = venue.id === props.selectedVenueId;
+            return (
+              <Pressable
+                key={venue.id}
+                onPress={() => {
+                  props.setSelectedVenueId(venue.id);
+                  props.setPickerOpen(() => false);
+                }}
+                style={({ pressed }) => [
+                  styles.pickerOption,
+                  isSelected && styles.pickerOptionSelected,
+                  pressed && styles.pickerOptionPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+              >
+                <Text style={styles.pickerOptionText}>{venue.name}</Text>
+                {isSelected && (
+                  <Ionicons name="checkmark" size={18} color="#6c63ff" />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      <Text style={styles.label}>Proposed date (yyyy-mm-dd)</Text>
+      <TextInput
+        style={styles.input}
+        value={props.proposedDate}
+        onChangeText={props.setProposedDate}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholder="2026-05-10"
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+        returnKeyType="next"
+      />
+
+      <Text style={styles.label}>Concept (optional)</Text>
+      <TextInput
+        style={styles.input}
+        value={props.concept}
+        onChangeText={props.setConcept}
+        autoCapitalize="sentences"
+        autoCorrect
+        placeholder="e.g. Late-night electronic"
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+        returnKeyType="done"
+      />
+    </View>
+  );
+}
+
+// --- Sub-form: band-for-musician -----------------------------------------
+
+function BandForMusicianForm(props: {
+  instrument: string;
+  setInstrument: (v: string) => void;
+  availability: string;
+  setAvailability: (v: string) => void;
+  demosUrl: string;
+  setDemosUrl: (v: string) => void;
+  submitting: boolean;
+}) {
+  return (
+    <View style={styles.form}>
+      <Text style={styles.label}>Instrument</Text>
+      <TextInput
+        style={styles.input}
+        value={props.instrument}
+        onChangeText={props.setInstrument}
+        autoCapitalize="words"
+        autoCorrect={false}
+        placeholder="e.g. Bass Guitar"
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+        returnKeyType="next"
+      />
+
+      <Text style={styles.label}>Availability (optional)</Text>
+      <TextInput
+        style={[styles.input, styles.multiline]}
+        value={props.availability}
+        onChangeText={props.setAvailability}
+        multiline
+        numberOfLines={3}
+        placeholder="e.g. Weekends, Tuesday evenings"
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+      />
+
+      <Text style={styles.label}>Demos URL (optional)</Text>
+      <TextInput
+        style={styles.input}
+        value={props.demosUrl}
+        onChangeText={props.setDemosUrl}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+        placeholder="https://soundcloud.com/..."
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+        returnKeyType="done"
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f0f11" },
   flex: { flex: 1 },
@@ -994,4 +1448,34 @@ const styles = StyleSheet.create({
   },
   matchRowPressed: { opacity: 0.7 },
   matchRowText: { color: "#fff", fontSize: 14, flexShrink: 1 },
+  dateAddRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dateAddInput: { flex: 1 },
+  dateAddBtn: {
+    backgroundColor: "#6c63ff",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    minWidth: 44,
+  },
+  chipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#22222a",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  chipPressed: { opacity: 0.7 },
+  chipText: { color: "#fff", fontSize: 13 },
+  helperText: { color: "#7a7a85", fontSize: 13, marginTop: 4 },
 });

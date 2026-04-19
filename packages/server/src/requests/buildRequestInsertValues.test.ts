@@ -176,4 +176,109 @@ describe('buildRequestInsertValues', () => {
       expect(result.anchor_gig_id).toBeNull();
     });
   });
+
+  describe('night-at-venue', () => {
+    it('maps a night-at-venue input with all fields', () => {
+      const input: RequestCreateInput = {
+        kind: 'night-at-venue',
+        concept: 'Saturday jazz showcase',
+        possibleDates: ['2026-05-02', '2026-05-09', '2026-05-16'],
+      };
+
+      expect(buildRequestInsertValues(input, 11)).toEqual({
+        kind: 'night-at-venue',
+        source_user_id: 11,
+        anchor_band_id: null,
+        anchor_gig_id: null,
+        details: {
+          kind: 'night-at-venue',
+          concept: 'Saturday jazz showcase',
+          possibleDates: ['2026-05-02', '2026-05-09', '2026-05-16'],
+        },
+        slot_count: 1,
+        slots_filled: 0,
+        status: 'open',
+      });
+    });
+  });
+
+  describe('promoter-for-venue-night', () => {
+    it('maps a promoter-for-venue-night input with all fields', () => {
+      const input: RequestCreateInput = {
+        kind: 'promoter-for-venue-night',
+        venueId: 3,
+        proposedDate: '2026-06-14',
+        concept: 'Late-night electronic',
+      };
+
+      expect(buildRequestInsertValues(input, 22)).toEqual({
+        kind: 'promoter-for-venue-night',
+        source_user_id: 22,
+        anchor_band_id: null,
+        anchor_gig_id: null,
+        details: {
+          kind: 'promoter-for-venue-night',
+          venueId: 3,
+          proposedDate: '2026-06-14',
+          concept: 'Late-night electronic',
+        },
+        slot_count: 1,
+        slots_filled: 0,
+        status: 'open',
+      });
+    });
+
+    it('omits optional concept when not provided', () => {
+      const input: RequestCreateInput = {
+        kind: 'promoter-for-venue-night',
+        venueId: 5,
+        proposedDate: '2026-06-14',
+      };
+
+      expect(buildRequestInsertValues(input, 1).details).toEqual({
+        kind: 'promoter-for-venue-night',
+        venueId: 5,
+        proposedDate: '2026-06-14',
+      });
+    });
+  });
+
+  describe('band-for-musician', () => {
+    it('maps a band-for-musician input with all fields', () => {
+      const input: RequestCreateInput = {
+        kind: 'band-for-musician',
+        instrument: 'Bass Guitar',
+        availability: 'Weekends',
+        demosUrl: 'https://example.com/demos',
+      };
+
+      expect(buildRequestInsertValues(input, 33)).toEqual({
+        kind: 'band-for-musician',
+        source_user_id: 33,
+        anchor_band_id: null,
+        anchor_gig_id: null,
+        details: {
+          kind: 'band-for-musician',
+          instrument: 'Bass Guitar',
+          availability: 'Weekends',
+          demosUrl: 'https://example.com/demos',
+        },
+        slot_count: 1,
+        slots_filled: 0,
+        status: 'open',
+      });
+    });
+
+    it('omits optional availability and demosUrl when not provided', () => {
+      const input: RequestCreateInput = {
+        kind: 'band-for-musician',
+        instrument: 'Drums',
+      };
+
+      expect(buildRequestInsertValues(input, 1).details).toEqual({
+        kind: 'band-for-musician',
+        instrument: 'Drums',
+      });
+    });
+  });
 });

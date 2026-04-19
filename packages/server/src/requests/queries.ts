@@ -21,6 +21,8 @@ import {
   type RequestCreateInput,
 } from './buildRequestInsertValues.js';
 import { matchesGigRequest } from './matchesGigRequest.js';
+import { matchesMusicianRequest } from './matchesMusicianRequest.js';
+import { matchesNightAtVenue } from './matchesNightAtVenue.js';
 import { sortEoisForManage, type SortableEoi } from './sortEoisForManage.js';
 
 export interface ShapedRequest {
@@ -395,22 +397,36 @@ export async function listMyRequests(userId: number): Promise<ShapedRequestWithE
 // --- Matches (MUS-57) ----------------------------------------------------
 
 /**
+ * Kinds that participate in the matches surface. MUS-57 added the gig pair;
+ * MUS-58 extends with the night-at-venue and musician pairs. `musician-for-
+ * band` and `band-for-musician` are counterpart sides of the same engagement,
+ * as are `night-at-venue` and `promoter-for-venue-night`.
+ */
+export type MatchableKind =
+  | 'band-for-gig-slot'
+  | 'gig-for-band'
+  | 'night-at-venue'
+  | 'promoter-for-venue-night'
+  | 'musician-for-band'
+  | 'band-for-musician';
+
+/**
  * Shape returned by `listMatchesForUser`. One entry per (myRequest,
- * counterpartRequest) pair that satisfies `matchesGigRequest`.
+ * counterpartRequest) pair that satisfies the relevant pure match rule.
  *
  * Consumers (mobile) render this as a suggestion card; the pre-fill data
- * for one-tap EoI creation is carried inside `counterpart` (specifically
- * `gigId` for the promoter-side flow, or `bandId` + `targetDate` for the
- * band-side flow).
+ * for one-tap EoI creation is carried inside `counterpart`. The field is a
+ * flat superset so every counterpart kind reads through the same shape —
+ * fields irrelevant to a given kind are just `null`.
  */
 export interface ShapedMatch {
   myRequest: {
     id: number;
-    kind: 'band-for-gig-slot' | 'gig-for-band';
+    kind: MatchableKind;
   };
   counterpart: {
     id: number;
-    kind: 'band-for-gig-slot' | 'gig-for-band';
+    kind: MatchableKind;
     sourceUserId: number;
     // Fields for `band-for-gig-slot` counterparts: the gig itself.
     gigId: number | null;
@@ -424,26 +440,77 @@ export interface ShapedMatch {
     targetDate: string | null;
     area: string | null;
     feeAsked: number | null;
+    // Fields for `night-at-venue` / `promoter-for-venue-night` counterparts.
+    concept: string | null;
+    // Promoter-side `night-at-venue`: the list of possibleDates. `null` for
+    // any other kind so the client can use `null` to mean "not applicable".
+    possibleDates: string[] | null;
+    // Venue-side `promoter-for-venue-night`: the venue + proposedDate.
+    venueId: number | null;
+    venueName: string | null;
+    proposedDate: string | null;
+    // Fields for `musician-for-band` / `band-for-musician` counterparts.
+    instrument: string | null;
+  };
+}
+
+/** All request kinds that participate in the matches surface. */
+const MATCHABLE_KINDS: MatchableKind[] = [
+  'band-for-gig-slot',
+  'gig-for-band',
+  'night-at-venue',
+  'promoter-for-venue-night',
+  'musician-for-band',
+  'band-for-musician',
+];
+
+/**
+ * Factory for an "empty" counterpart shape. Individual pairings fill in the
+ * fields relevant to their kind; everything else stays null so the client
+ * can narrow on `kind` and read only what applies.
+ */
+function emptyCounterpartShape(): Omit<ShapedMatch['counterpart'], 'id' | 'kind' | 'sourceUserId'> {
+  return {
+    gigId: null,
+    gigDatetime: null,
+    gigVenueName: null,
+    feeOffered: null,
+    bandId: null,
+    bandName: null,
+    bandImageUrl: null,
+    targetDate: null,
+    area: null,
+    feeAsked: null,
+    concept: null,
+    possibleDates: null,
+    venueId: null,
+    venueName: null,
+    proposedDate: null,
+    instrument: null,
   };
 }
 
 /**
  * Returns the set of matches between the caller's open requests and open
- * counterpart requests owned by other users.
+ * counterpart requests owned by other users across every kind pair:
+ *   - `band-for-gig-slot` ↔ `gig-for-band` (MUS-57, `matchesGigRequest`)
+ *   - `night-at-venue` ↔ `promoter-for-venue-night` (MUS-58, `matchesNightAtVenue`)
+ *   - `musician-for-band` ↔ `band-for-musician` (MUS-58, `matchesMusicianRequest`)
  *
  * Implemented as a candidate-fetch + filter: pull both sides' open rows,
- * resolve enough data to run `matchesGigRequest` (gig date + venue city vs
- * target date + area), then pair them up with the pure match rule. The
- * discovery volume today is small enough that this is fine; if it becomes a
- * hotspot we'd replace it with a SQL-side pre-filter + pagination.
+ * resolve enough data to run each match rule, then pair them up with the
+ * relevant pure helper. Discovery volume today is small enough that this is
+ * fine; if it becomes a hotspot we'd replace it with a SQL-side pre-filter +
+ * pagination.
  */
 export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]> {
-  // Caller's open requests across the two counterpart kinds.
+  // Caller's open requests across every matchable kind.
   const myRows = await db
     .select({
       id: requests.id,
       kind: requests.kind,
       details: requests.details,
+      anchorBandId: requests.anchor_band_id,
       anchorGigId: requests.anchor_gig_id,
     })
     .from(requests)
@@ -451,21 +518,22 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
       and(
         eq(requests.source_user_id, userId),
         eq(requests.status, 'open'),
-        inArray(requests.kind, ['band-for-gig-slot', 'gig-for-band']),
+        inArray(requests.kind, MATCHABLE_KINDS),
       ),
     );
 
   if (myRows.length === 0) return [];
 
-  // Counterpart candidates: every OTHER user's open band-for-gig-slot +
-  // gig-for-band, joined through gigs/venues/bands as needed so we have
-  // enough data to feed `matchesGigRequest`.
+  // Counterpart candidates: every OTHER user's open rows across the same
+  // kinds. Join through gigs/venues/bands as needed so we have enough data
+  // to feed the pure helpers.
   const candidateRows = await db
     .select({
       id: requests.id,
       kind: requests.kind,
       details: requests.details,
       sourceUserId: requests.source_user_id,
+      anchorBandId: requests.anchor_band_id,
       anchorGigId: requests.anchor_gig_id,
       gigDatetime: gigs.datetime,
       gigVenueName: venues.name,
@@ -481,7 +549,7 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
       and(
         eq(requests.status, 'open'),
         ne(requests.source_user_id, userId),
-        inArray(requests.kind, ['band-for-gig-slot', 'gig-for-band']),
+        inArray(requests.kind, MATCHABLE_KINDS),
       ),
     );
 
@@ -509,6 +577,31 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
         .where(inArray(bands.id, gigForBandBandIds))
     : [];
   const bandsById = new Map(extraBands.map((b) => [b.id, b]));
+
+  // Venues referenced by `promoter-for-venue-night` counterparts. Same
+  // pattern — pre-fetch in a single round-trip rather than N+1.
+  const promoterForVenueNightVenueIds = Array.from(
+    new Set(
+      candidateRows
+        .filter(
+          (r) =>
+            r.kind === 'promoter-for-venue-night' &&
+            r.details.kind === 'promoter-for-venue-night',
+        )
+        .map((r) => {
+          if (r.details.kind !== 'promoter-for-venue-night') return null;
+          return r.details.venueId;
+        })
+        .filter((id): id is number => id !== null),
+    ),
+  );
+  const extraVenues = promoterForVenueNightVenueIds.length
+    ? await db
+        .select({ id: venues.id, name: venues.name })
+        .from(venues)
+        .where(inArray(venues.id, promoterForVenueNightVenueIds))
+    : [];
+  const venuesById = new Map(extraVenues.map((v) => [v.id, v]));
 
   const matches: ShapedMatch[] = [];
 
@@ -552,13 +645,10 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
         matches.push({
           myRequest: { id: mine.id, kind: 'band-for-gig-slot' },
           counterpart: {
+            ...emptyCounterpartShape(),
             id: other.id,
             kind: 'gig-for-band',
             sourceUserId: other.sourceUserId,
-            gigId: null,
-            gigDatetime: null,
-            gigVenueName: null,
-            feeOffered: null,
             bandId: other.details.bandId,
             bandName: band?.name ?? null,
             bandImageUrl: band?.imageUrl ?? null,
@@ -597,6 +687,7 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
         matches.push({
           myRequest: { id: mine.id, kind: 'gig-for-band' },
           counterpart: {
+            ...emptyCounterpartShape(),
             id: other.id,
             kind: 'band-for-gig-slot',
             sourceUserId: other.sourceUserId,
@@ -604,12 +695,118 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
             gigDatetime: other.gigDatetime,
             gigVenueName: other.gigVenueName,
             feeOffered: other.details.feeOffered ?? null,
-            bandId: null,
-            bandName: null,
-            bandImageUrl: null,
-            targetDate: null,
-            area: null,
-            feeAsked: null,
+          },
+        });
+      }
+    } else if (mine.kind === 'night-at-venue') {
+      if (mine.details.kind !== 'night-at-venue') continue;
+      const myPossibleDates = mine.details.possibleDates;
+      const myConcept = mine.details.concept;
+      for (const other of candidateRows) {
+        if (other.kind !== 'promoter-for-venue-night') continue;
+        if (other.details.kind !== 'promoter-for-venue-night') continue;
+        if (
+          !matchesNightAtVenue(
+            { possibleDates: myPossibleDates },
+            { proposedDate: other.details.proposedDate },
+          )
+        ) {
+          continue;
+        }
+        const venue = venuesById.get(other.details.venueId) ?? null;
+        matches.push({
+          myRequest: { id: mine.id, kind: 'night-at-venue' },
+          counterpart: {
+            ...emptyCounterpartShape(),
+            id: other.id,
+            kind: 'promoter-for-venue-night',
+            sourceUserId: other.sourceUserId,
+            venueId: other.details.venueId,
+            venueName: venue?.name ?? null,
+            proposedDate: other.details.proposedDate,
+            concept: other.details.concept ?? myConcept,
+          },
+        });
+      }
+    } else if (mine.kind === 'promoter-for-venue-night') {
+      if (mine.details.kind !== 'promoter-for-venue-night') continue;
+      const myProposedDate = mine.details.proposedDate;
+      for (const other of candidateRows) {
+        if (other.kind !== 'night-at-venue') continue;
+        if (other.details.kind !== 'night-at-venue') continue;
+        if (
+          !matchesNightAtVenue(
+            { possibleDates: other.details.possibleDates },
+            { proposedDate: myProposedDate },
+          )
+        ) {
+          continue;
+        }
+        matches.push({
+          myRequest: { id: mine.id, kind: 'promoter-for-venue-night' },
+          counterpart: {
+            ...emptyCounterpartShape(),
+            id: other.id,
+            kind: 'night-at-venue',
+            sourceUserId: other.sourceUserId,
+            concept: other.details.concept,
+            possibleDates: other.details.possibleDates,
+            // Echo back my proposed date so the client can render "they can
+            // run it on your date" without another fetch.
+            proposedDate: myProposedDate,
+          },
+        });
+      }
+    } else if (mine.kind === 'musician-for-band') {
+      if (mine.details.kind !== 'musician-for-band') continue;
+      const myInstrument = mine.details.instrument;
+      for (const other of candidateRows) {
+        if (other.kind !== 'band-for-musician') continue;
+        if (other.details.kind !== 'band-for-musician') continue;
+        if (
+          !matchesMusicianRequest(
+            { instrument: myInstrument },
+            { instrument: other.details.instrument },
+          )
+        ) {
+          continue;
+        }
+        matches.push({
+          myRequest: { id: mine.id, kind: 'musician-for-band' },
+          counterpart: {
+            ...emptyCounterpartShape(),
+            id: other.id,
+            kind: 'band-for-musician',
+            sourceUserId: other.sourceUserId,
+            instrument: other.details.instrument,
+          },
+        });
+      }
+    } else if (mine.kind === 'band-for-musician') {
+      if (mine.details.kind !== 'band-for-musician') continue;
+      const myInstrument = mine.details.instrument;
+      for (const other of candidateRows) {
+        if (other.kind !== 'musician-for-band') continue;
+        if (other.details.kind !== 'musician-for-band') continue;
+        if (
+          !matchesMusicianRequest(
+            { instrument: other.details.instrument },
+            { instrument: myInstrument },
+          )
+        ) {
+          continue;
+        }
+        matches.push({
+          myRequest: { id: mine.id, kind: 'band-for-musician' },
+          counterpart: {
+            ...emptyCounterpartShape(),
+            id: other.id,
+            kind: 'musician-for-band',
+            sourceUserId: other.sourceUserId,
+            bandId: other.anchorBandId,
+            bandName: other.bandName,
+            bandImageUrl: other.bandImageUrl,
+            instrument: other.details.instrument,
           },
         });
       }

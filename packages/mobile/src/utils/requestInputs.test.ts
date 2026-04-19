@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBandForGigSlotInput,
+  buildBandForMusicianInput,
   buildGigForBandInput,
   buildMusicianForBandInput,
+  buildNightAtVenueInput,
+  buildPromoterForVenueNightInput,
   filterMyBands,
 } from './requestInputs';
 
@@ -184,6 +187,178 @@ describe('buildGigForBandInput', () => {
         targetDate: '',
         area: '',
         feeAsked: '',
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('buildNightAtVenueInput', () => {
+  it('returns a payload with a single valid date', () => {
+    expect(
+      buildNightAtVenueInput({
+        concept: 'Saturday showcase',
+        possibleDates: ['2026-05-10'],
+      }),
+    ).toEqual({
+      kind: 'night-at-venue',
+      concept: 'Saturday showcase',
+      possibleDates: ['2026-05-10'],
+    });
+  });
+
+  it('sorts and de-duplicates the dates', () => {
+    expect(
+      buildNightAtVenueInput({
+        concept: 'x',
+        possibleDates: ['2026-05-16', '2026-05-09', '2026-05-16', '2026-05-02'],
+      }),
+    ).toEqual({
+      kind: 'night-at-venue',
+      concept: 'x',
+      possibleDates: ['2026-05-02', '2026-05-09', '2026-05-16'],
+    });
+  });
+
+  it('drops malformed entries but keeps valid ones', () => {
+    expect(
+      buildNightAtVenueInput({
+        concept: 'x',
+        possibleDates: ['2026-05-10', 'not-a-date', '2026-05-17'],
+      }),
+    ).toEqual({
+      kind: 'night-at-venue',
+      concept: 'x',
+      possibleDates: ['2026-05-10', '2026-05-17'],
+    });
+  });
+
+  it('returns null when concept is blank', () => {
+    expect(
+      buildNightAtVenueInput({
+        concept: '   ',
+        possibleDates: ['2026-05-10'],
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when the resulting date list is empty', () => {
+    expect(
+      buildNightAtVenueInput({
+        concept: 'x',
+        possibleDates: [],
+      }),
+    ).toBeNull();
+    expect(
+      buildNightAtVenueInput({
+        concept: 'x',
+        possibleDates: ['not-a-date'],
+      }),
+    ).toBeNull();
+  });
+
+  it('trims the concept and each date entry', () => {
+    expect(
+      buildNightAtVenueInput({
+        concept: '  Jazz night  ',
+        possibleDates: ['  2026-05-10  '],
+      }),
+    ).toEqual({
+      kind: 'night-at-venue',
+      concept: 'Jazz night',
+      possibleDates: ['2026-05-10'],
+    });
+  });
+});
+
+describe('buildPromoterForVenueNightInput', () => {
+  it('returns a payload with all fields set', () => {
+    expect(
+      buildPromoterForVenueNightInput({
+        venueId: 3,
+        proposedDate: '2026-06-14',
+        concept: 'Late-night electronic',
+      }),
+    ).toEqual({
+      kind: 'promoter-for-venue-night',
+      venueId: 3,
+      proposedDate: '2026-06-14',
+      concept: 'Late-night electronic',
+    });
+  });
+
+  it('omits concept when blank', () => {
+    expect(
+      buildPromoterForVenueNightInput({
+        venueId: 3,
+        proposedDate: '2026-06-14',
+        concept: '   ',
+      }),
+    ).toEqual({
+      kind: 'promoter-for-venue-night',
+      venueId: 3,
+      proposedDate: '2026-06-14',
+    });
+  });
+
+  it('returns null for malformed date', () => {
+    expect(
+      buildPromoterForVenueNightInput({
+        venueId: 3,
+        proposedDate: 'next week',
+        concept: '',
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('buildBandForMusicianInput', () => {
+  it('returns a payload with all fields set', () => {
+    expect(
+      buildBandForMusicianInput({
+        instrument: 'Bass Guitar',
+        availability: 'Weekends',
+        demosUrl: 'https://example.com/demos',
+      }),
+    ).toEqual({
+      kind: 'band-for-musician',
+      instrument: 'Bass Guitar',
+      availability: 'Weekends',
+      demosUrl: 'https://example.com/demos',
+    });
+  });
+
+  it('omits optional fields when blank', () => {
+    expect(
+      buildBandForMusicianInput({
+        instrument: 'Drums',
+        availability: '',
+        demosUrl: '   ',
+      }),
+    ).toEqual({
+      kind: 'band-for-musician',
+      instrument: 'Drums',
+    });
+  });
+
+  it('trims the instrument before submitting', () => {
+    expect(
+      buildBandForMusicianInput({
+        instrument: '  Guitar  ',
+        availability: '',
+        demosUrl: '',
+      }),
+    ).toEqual({
+      kind: 'band-for-musician',
+      instrument: 'Guitar',
+    });
+  });
+
+  it('returns null when instrument is blank', () => {
+    expect(
+      buildBandForMusicianInput({
+        instrument: '   ',
+        availability: 'Weekends',
+        demosUrl: '',
       }),
     ).toBeNull();
   });

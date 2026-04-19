@@ -271,6 +271,9 @@ export const requestKindEnum = pgEnum('request_kind', [
   'musician-for-band',
   'band-for-gig-slot',
   'gig-for-band',
+  'night-at-venue',
+  'promoter-for-venue-night',
+  'band-for-musician',
 ]);
 
 export const requestStatusEnum = pgEnum('request_status', ['open', 'closed', 'cancelled']);
@@ -309,6 +312,33 @@ export type RequestDetails =
       targetDate: string; // ISO yyyy-mm-dd, no time component
       area?: string;
       feeAsked?: number;
+    }
+  // `night-at-venue` (MUS-58): a promoter broadcasts a concept for a night and
+  // a set of dates they could run it on. No anchor object on the request side
+  // — the venue is supplied by the venue rep on the EoI, and acceptance
+  // creates a draft `gigs` row from the EoI payload.
+  | {
+      kind: 'night-at-venue';
+      concept: string;
+      possibleDates: string[]; // ISO yyyy-mm-dd list, non-empty
+    }
+  // `promoter-for-venue-night` (MUS-58): a venue rep has a specific night and
+  // is looking for a promoter to run it. No anchor object — the gig is
+  // created from the request payload when a promoter accepts.
+  | {
+      kind: 'promoter-for-venue-night';
+      venueId: number;
+      proposedDate: string; // ISO yyyy-mm-dd
+      concept?: string;
+    }
+  // `band-for-musician` (MUS-58): a musician broadcasts that they're looking
+  // for a band. Anchor sits on the EoI side — a specific band the accepting
+  // user is a member of. Acceptance adds the musician to that band.
+  | {
+      kind: 'band-for-musician';
+      instrument: string;
+      availability?: string;
+      demosUrl?: string;
     };
 
 export type EoiDetails =
@@ -323,6 +353,30 @@ export type EoiDetails =
       gigId: number;
       bandForGigSlotRequestId?: number;
       proposedFee?: number;
+    }
+  // `night-at-venue` EoI (MUS-58): a venue rep picks one of the promoter's
+  // `possibleDates` and pairs it with a venue they represent. Acceptance
+  // creates a draft gig from this payload.
+  | {
+      kind: 'night-at-venue';
+      venueId: number;
+      proposedDate: string; // ISO yyyy-mm-dd (must be one of the request's possibleDates)
+      concept?: string;
+    }
+  // `promoter-for-venue-night` EoI (MUS-58): a promoter accepts the venue's
+  // proposed night. No new venue/date info — it all comes from the request.
+  | {
+      kind: 'promoter-for-venue-night';
+      concept?: string;
+    }
+  // `band-for-musician` EoI (MUS-58): a band member offers one of their bands
+  // to the musician. Acceptance inserts a `band_members` row (idempotent).
+  // `instrumentRole` is the instrument they expect the musician to play; if
+  // absent the match defaults to the request's `details.instrument`.
+  | {
+      kind: 'band-for-musician';
+      bandId: number;
+      instrumentRole?: string;
     };
 
 export const requests = pgTable('requests', {

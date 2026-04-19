@@ -32,6 +32,26 @@ export interface GigForBandInput {
   feeAsked?: number;
 }
 
+export interface NightAtVenueInput {
+  kind: 'night-at-venue';
+  concept: string;
+  possibleDates: string[]; // non-empty list of ISO yyyy-mm-dd
+}
+
+export interface PromoterForVenueNightInput {
+  kind: 'promoter-for-venue-night';
+  venueId: number;
+  proposedDate: string; // ISO yyyy-mm-dd
+  concept?: string;
+}
+
+export interface BandForMusicianInput {
+  kind: 'band-for-musician';
+  instrument: string;
+  availability?: string;
+  demosUrl?: string;
+}
+
 /**
  * Filters `bands.list` down to bands where the caller is a member.
  *
@@ -108,5 +128,80 @@ export function buildGigForBandInput(args: {
   if (Number.isFinite(feeAsked) && feeAsked >= 0) {
     payload.feeAsked = feeAsked;
   }
+  return payload;
+}
+
+/** Regex for the yyyy-mm-dd shape Zod enforces on every date-string input. */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Validates and shapes a night-at-venue form input. Returns `null` if the
+ * concept is blank or `possibleDates` is empty / contains anything other
+ * than yyyy-mm-dd strings. All dates are de-duped and sorted to keep
+ * downstream comparisons stable.
+ */
+export function buildNightAtVenueInput(args: {
+  concept: string;
+  possibleDates: string[];
+}): NightAtVenueInput | null {
+  const concept = args.concept.trim();
+  if (concept.length === 0) return null;
+  const unique = Array.from(
+    new Set(
+      args.possibleDates
+        .map((d) => d.trim())
+        .filter((d) => ISO_DAY.test(d)),
+    ),
+  );
+  unique.sort();
+  if (unique.length === 0) return null;
+  return {
+    kind: 'night-at-venue',
+    concept,
+    possibleDates: unique,
+  };
+}
+
+/**
+ * Validates and shapes a promoter-for-venue-night form input. Returns `null`
+ * when the proposed date isn't yyyy-mm-dd. `venueId` must already be a valid
+ * chosen venue — the form ensures a pick before calling this helper.
+ */
+export function buildPromoterForVenueNightInput(args: {
+  venueId: number;
+  proposedDate: string;
+  concept: string;
+}): PromoterForVenueNightInput | null {
+  const date = args.proposedDate.trim();
+  if (!ISO_DAY.test(date)) return null;
+  const payload: PromoterForVenueNightInput = {
+    kind: 'promoter-for-venue-night',
+    venueId: args.venueId,
+    proposedDate: date,
+  };
+  const concept = args.concept.trim();
+  if (concept.length > 0) payload.concept = concept;
+  return payload;
+}
+
+/**
+ * Validates and shapes a band-for-musician form input. Returns `null` when
+ * instrument is blank. Availability / demosUrl are dropped when empty.
+ */
+export function buildBandForMusicianInput(args: {
+  instrument: string;
+  availability: string;
+  demosUrl: string;
+}): BandForMusicianInput | null {
+  const instrument = args.instrument.trim();
+  if (instrument.length === 0) return null;
+  const payload: BandForMusicianInput = {
+    kind: 'band-for-musician',
+    instrument,
+  };
+  const availability = args.availability.trim();
+  if (availability.length > 0) payload.availability = availability;
+  const demosUrl = args.demosUrl.trim();
+  if (demosUrl.length > 0) payload.demosUrl = demosUrl;
   return payload;
 }

@@ -15,6 +15,7 @@ import {
   type RequestKind,
   type RequestStatus,
 } from '../schema.js';
+import { computeBandAllocationUpdates } from './computeBandAllocationUpdates.js';
 import { computeGigAllocationUpdates } from './computeGigAllocationUpdates.js';
 import { computeSlotOutcome } from './computeSlotOutcome.js';
 
@@ -45,6 +46,30 @@ export type EoiCreateInput =
       gigId: number;
       bandForGigSlotRequestId?: number;
       proposedFee?: number;
+    }
+  // `night-at-venue` (MUS-58): venue rep supplies the venue + proposed date
+  // (which must be one of the request's possibleDates). Acceptance creates a
+  // draft gig.
+  | {
+      kind: 'night-at-venue';
+      venueId: number;
+      proposedDate: string;
+      concept?: string;
+    }
+  // `promoter-for-venue-night` (MUS-58): promoter accepts the venue's
+  // proposed night. Venue + date come from the request; `concept` is the
+  // optional theme the promoter would run.
+  | {
+      kind: 'promoter-for-venue-night';
+      concept?: string;
+    }
+  // `band-for-musician` (MUS-58): band member offers one of their bands to
+  // the musician. Acceptance adds the musician to the band and fires the
+  // same-instrument sibling close invariant.
+  | {
+      kind: 'band-for-musician';
+      bandId: number;
+      instrumentRole?: string;
     };
 
 // --- Read helpers --------------------------------------------------------
@@ -125,7 +150,11 @@ export type RespondResult =
   // `gig-for-band` accepts may hit them). Structured so the tRPC layer maps
   // them to precise error codes rather than a generic 500.
   | { kind: 'invalid_eoi_details' }
-  | { kind: 'no_open_slot' };
+  | { kind: 'no_open_slot' }
+  // `night-at-venue` (MUS-58): the venue rep's proposedDate must be one of
+  // the request's possibleDates. Enforced at accept time so the EoI couldn't
+  // have been tampered with after creation.
+  | { kind: 'date_not_offered' };
 
 export async function respondToEoi(input: RespondInput): Promise<RespondResult> {
   return db.transaction(async (tx) => {
@@ -181,16 +210,19 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
 
     // ACCEPTED path.
     //
-    // For any kind that allocates a band into a gig (both `band-for-gig-slot`
-    // and `gig-for-band`) we claim an open `gig_slots` row BEFORE marking the
+    // For any kind that allocates a band into a gig (`band-for-gig-slot` and
+    // `gig-for-band`) we claim an open `gig_slots` row BEFORE marking the
     // EoI accepted, so a "no slots left" race is surfaced as a clean
     // precondition failure (the caller's transaction rolls back and the EoI
-    // stays pending).
+    // stays pending). Kinds whose acceptance CREATES a gig
+    // (`night-at-venue`, `promoter-for-venue-night`) validate their payload
+    // here too; the actual insert happens further down once the request +
+    // EoI state are updated.
     //
     // `allocationGigId` is the gig whose open-slot count is being decremented
     // by this accept. For `band-for-gig-slot` it's the request's anchor gig;
     // for `gig-for-band` it's the gig the promoter supplied on the EoI. Null
-    // for kinds that don't allocate into a gig (e.g. `musician-for-band`).
+    // for kinds that don't allocate into a gig.
     let allocationGigId: number | null = null;
     if (req.kind === 'band-for-gig-slot') {
       if (eoi.details === null || eoi.details.kind !== 'band-for-gig-slot') {
@@ -215,6 +247,34 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
       const bandId = req.details.bandId;
       const claim = await claimOpenSlot(tx, allocationGigId, bandId, now);
       if (!claim) return { kind: 'no_open_slot' } as const;
+    } else if (req.kind === 'night-at-venue') {
+      if (eoi.details === null || eoi.details.kind !== 'night-at-venue') {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+      if (req.details.kind !== 'night-at-venue') {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+      // Enforce: the proposed date must be one of the request's possibleDates.
+      if (!req.details.possibleDates.includes(eoi.details.proposedDate)) {
+        return { kind: 'date_not_offered' } as const;
+      }
+    } else if (req.kind === 'promoter-for-venue-night') {
+      if (
+        eoi.details === null ||
+        eoi.details.kind !== 'promoter-for-venue-night'
+      ) {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+      if (req.details.kind !== 'promoter-for-venue-night') {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+    } else if (req.kind === 'band-for-musician') {
+      if (eoi.details === null || eoi.details.kind !== 'band-for-musician') {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+      if (req.details.kind !== 'band-for-musician') {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
     }
 
     const { newSlotsFilled, shouldCloseRequest } = computeSlotOutcome(
@@ -252,6 +312,65 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
         .insert(bandMembers)
         .values({ band_id: req.anchor_band_id, user_id: eoi.target_user_id })
         .onConflictDoNothing();
+    }
+
+    // Outcome side-effect for `band-for-musician` (MUS-58): add the request
+    // creator (the musician) to the band the EoI creator represents. Same
+    // idempotent insert pattern as `musician-for-band`. The sibling-close
+    // invariant below also fires for this kind.
+    let bandForMusicianCtx: {
+      bandId: number;
+      instrument: string;
+    } | null = null;
+    if (req.kind === 'band-for-musician') {
+      if (
+        eoi.details !== null &&
+        eoi.details.kind === 'band-for-musician' &&
+        req.details.kind === 'band-for-musician'
+      ) {
+        const bandId = eoi.details.bandId;
+        await tx
+          .insert(bandMembers)
+          .values({ band_id: bandId, user_id: req.source_user_id })
+          .onConflictDoNothing();
+        // The allocation's instrument is the request's instrument (the
+        // musician's own declaration). `instrumentRole` on the EoI defaults
+        // to the same and is only surfaced for the UI's "joined as"
+        // narrative, not for matching.
+        bandForMusicianCtx = {
+          bandId,
+          instrument: req.details.instrument,
+        };
+      }
+    }
+
+    // Outcome side-effect for `night-at-venue` and `promoter-for-venue-night`
+    // (MUS-58): create a draft `gigs` row from the combined request + EoI
+    // payload. No slots are created here — the promoter fills the lineup via
+    // follow-up `band-for-gig-slot` requests. We use `slot_count = 0` on the
+    // parent request (slot_count defaults to 1; accept closes it) so no
+    // separate gig-slot allocation applies.
+    if (
+      req.kind === 'night-at-venue' &&
+      eoi.details !== null &&
+      eoi.details.kind === 'night-at-venue'
+    ) {
+      await tx.insert(gigs).values({
+        datetime: new Date(eoi.details.proposedDate),
+        venue_id: eoi.details.venueId,
+        organiser_user_id: req.source_user_id,
+        status: 'draft',
+      });
+    } else if (
+      req.kind === 'promoter-for-venue-night' &&
+      req.details.kind === 'promoter-for-venue-night'
+    ) {
+      await tx.insert(gigs).values({
+        datetime: new Date(req.details.proposedDate),
+        venue_id: req.details.venueId,
+        organiser_user_id: eoi.target_user_id,
+        status: 'draft',
+      });
     }
 
     let autoRejectedEoiIds: number[] = [];
@@ -322,6 +441,86 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
         pendingEoiIds: pendingByRequest.get(s.id) ?? [],
       }));
       const updates = computeGigAllocationUpdates(siblings);
+      for (const update of updates) {
+        await tx
+          .update(requests)
+          .set({
+            slots_filled: update.newSlotsFilled,
+            status: update.shouldClose ? 'closed' : 'open',
+            updated_at: now,
+          })
+          .where(eq(requests.id, update.id));
+      }
+      const siblingAutoRejectIds = updates.flatMap((u) => u.eoiIdsToAutoReject);
+      if (siblingAutoRejectIds.length > 0) {
+        await tx
+          .update(expressionsOfInterest)
+          .set({ state: 'auto_rejected', decided_at: now, updated_at: now })
+          .where(inArray(expressionsOfInterest.id, siblingAutoRejectIds));
+        autoRejectedEoiIds = [...autoRejectedEoiIds, ...siblingAutoRejectIds];
+      }
+    }
+
+    // Cross-request sibling update (MUS-58 band-allocation invariant).
+    //
+    // A `band-for-musician` accept puts a musician into band B on instrument
+    // I. Every open `musician-for-band` request anchored to B whose
+    // (normalised) `details.instrument` matches I must have its slot
+    // counters ticked and potentially auto-close. Instruments that don't
+    // match are untouched — a drummer joining doesn't affect the band's
+    // open bass-player search.
+    if (bandForMusicianCtx !== null) {
+      const { bandId, instrument } = bandForMusicianCtx;
+      const openSiblings = await tx
+        .select({
+          id: requests.id,
+          slotsFilled: requests.slots_filled,
+          slotCount: requests.slot_count,
+          details: requests.details,
+        })
+        .from(requests)
+        .where(
+          and(
+            eq(requests.kind, 'musician-for-band'),
+            eq(requests.anchor_band_id, bandId),
+            eq(requests.status, 'open'),
+          ),
+        );
+
+      const siblingIds = openSiblings.map((s) => s.id);
+      const pendingByRequest = new Map<number, number[]>();
+      if (siblingIds.length > 0) {
+        const pending = await tx
+          .select({
+            id: expressionsOfInterest.id,
+            requestId: expressionsOfInterest.request_id,
+          })
+          .from(expressionsOfInterest)
+          .where(
+            and(
+              inArray(expressionsOfInterest.request_id, siblingIds),
+              eq(expressionsOfInterest.state, 'pending'),
+            ),
+          );
+        for (const row of pending) {
+          const existing = pendingByRequest.get(row.requestId) ?? [];
+          existing.push(row.id);
+          pendingByRequest.set(row.requestId, existing);
+        }
+      }
+
+      const siblingInputs = openSiblings
+        .filter((s) => s.details.kind === 'musician-for-band')
+        .map((s) => ({
+          id: s.id,
+          slotsFilled: s.slotsFilled,
+          slotCount: s.slotCount,
+          // Guarded above; narrow for the pure helper's input type.
+          instrument:
+            s.details.kind === 'musician-for-band' ? s.details.instrument : '',
+          pendingEoiIds: pendingByRequest.get(s.id) ?? [],
+        }));
+      const updates = computeBandAllocationUpdates(siblingInputs, instrument);
       for (const update of updates) {
         await tx
           .update(requests)

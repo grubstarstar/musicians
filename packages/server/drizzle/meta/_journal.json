@@ -57,6 +57,13 @@
       "when": 1776640000000,
       "tag": "0007_drop_musicians_bands",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776700000000,
+      "tag": "0008_mus58_request_kinds",
+      "breakpoints": true
     }
   ]
 }

@@ -34,9 +34,10 @@ export default function RequestsScreen() {
 }
 
 function RequestsList() {
-  const queryOptions = trpc.requests.list.queryOptions({
-    kind: "musician-for-band",
-  });
+  // MUS-58: the Notices / Opportunities tab now surfaces every request kind.
+  // Individual rows render differently per kind (see RequestRow below) and
+  // the caller's own rows are filtered server-side (MUS-61).
+  const queryOptions = trpc.requests.list.queryOptions({});
   const { data } = useSuspenseQuery(queryOptions);
   // Matches are a secondary surface on this screen — we show a card at the
   // top pointing users with an open `gig-for-band` post at the gig-slot
@@ -98,27 +99,17 @@ function RequestsList() {
           colors={["#6c63ff"]}
         />
       }
-      renderItem={({ item }) => {
-        // The query is filtered to `musician-for-band` server-side, but the
-        // return shape is the wider polymorphic union (MUS-56). Narrow here
-        // so the TS discriminated union collapses to the musician branch and
-        // `band` is non-null (musician-for-band rows always anchor to a band).
-        const { details, band } = item;
-        if (details.kind !== "musician-for-band" || band === null) {
-          return null;
-        }
-        return (
-          <RequestRow
-            id={item.id}
-            bandName={band.name}
-            bandImageUrl={band.imageUrl}
-            instrument={details.instrument}
-            rehearsalCommitment={details.rehearsalCommitment}
-            createdAt={new Date(item.createdAt)}
-            now={now}
-          />
-        );
-      }}
+      renderItem={({ item }) => (
+        <RequestRow
+          id={item.id}
+          kind={item.kind}
+          details={item.details}
+          band={item.band}
+          gig={item.anchorGig}
+          createdAt={new Date(item.createdAt)}
+          now={now}
+        />
+      )}
     />
   );
 }
@@ -183,26 +174,30 @@ function formatCounterpartDate(
   });
 }
 
+// Polymorphic row shape: we pass the already-shaped details + anchor through
+// from the server and pick render fields by `kind`. The server keeps a
+// per-kind discriminated union of `details` so we can narrow safely here.
+type RowDetails =
+  | { kind: "musician-for-band"; instrument: string; rehearsalCommitment?: string }
+  | { kind: "band-for-gig-slot"; setLength?: number; feeOffered?: number; gigId: number }
+  | { kind: "gig-for-band"; bandId: number; targetDate: string; area?: string; feeAsked?: number }
+  | { kind: "night-at-venue"; concept: string; possibleDates: string[] }
+  | { kind: "promoter-for-venue-night"; venueId: number; proposedDate: string; concept?: string }
+  | { kind: "band-for-musician"; instrument: string; availability?: string; demosUrl?: string };
+
 interface RequestRowProps {
   id: number;
-  bandName: string;
-  bandImageUrl: string | null;
-  instrument: string;
-  rehearsalCommitment: string | undefined;
+  kind: RowDetails["kind"];
+  details: RowDetails;
+  band: { id: number; name: string; imageUrl: string | null } | null;
+  gig: { id: number; datetime: Date | string; venue: { id: number; name: string } } | null;
   createdAt: Date;
   now: Date;
 }
 
-function RequestRow({
-  id,
-  bandName,
-  bandImageUrl,
-  instrument,
-  rehearsalCommitment,
-  createdAt,
-  now,
-}: RequestRowProps) {
+function RequestRow({ id, details, band, gig, createdAt, now }: RequestRowProps) {
   const router = useRouter();
+  const content = rowContentFor(details, band, gig);
   return (
     <Pressable
       onPress={() => {
@@ -212,32 +207,123 @@ function RequestRow({
       }}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={`Open request from ${bandName} for ${instrument}`}
+      accessibilityLabel={content.accessibilityLabel}
     >
       <Image
-        source={{ uri: bandImageUrl ?? undefined }}
+        source={{ uri: content.avatarUrl ?? undefined }}
         style={styles.avatar}
       />
       <View style={styles.rowBody}>
         <View style={styles.rowHeader}>
           <Text style={styles.bandName} numberOfLines={1}>
-            {bandName}
+            {content.title}
           </Text>
           <Text style={styles.timeAgo}>{formatRelative(createdAt, now)}</Text>
         </View>
         <View style={styles.metaRow}>
           <View style={styles.pill}>
-            <Text style={styles.pillText}>{instrument}</Text>
+            <Text style={styles.pillText}>{content.pill}</Text>
           </View>
-          {rehearsalCommitment && (
+          {content.subtitle && (
             <Text style={styles.rehearsalText} numberOfLines={1}>
-              {rehearsalCommitment}
+              {content.subtitle}
             </Text>
           )}
         </View>
       </View>
     </Pressable>
   );
+}
+
+interface RowContent {
+  title: string;
+  pill: string;
+  subtitle: string | null;
+  avatarUrl: string | null;
+  accessibilityLabel: string;
+}
+
+/** Compute the label strings for a row from the kind-specific details. Kept
+ *  inline here (rather than shared) because each kind has its own copy. */
+function rowContentFor(
+  details: RowDetails,
+  band: { name: string; imageUrl: string | null } | null,
+  gig: { datetime: Date | string; venue: { name: string } } | null,
+): RowContent {
+  switch (details.kind) {
+    case "musician-for-band": {
+      const title = band?.name ?? "A band";
+      return {
+        title,
+        pill: details.instrument,
+        subtitle: details.rehearsalCommitment ?? null,
+        avatarUrl: band?.imageUrl ?? null,
+        accessibilityLabel: `Open request from ${title} for ${details.instrument}`,
+      };
+    }
+    case "band-for-gig-slot": {
+      const when = gig ? formatDate(gig.datetime) : "";
+      const venue = gig?.venue.name ?? "a venue";
+      return {
+        title: `Gig slot at ${venue}`,
+        pill: "Slot",
+        subtitle: when || null,
+        avatarUrl: null,
+        accessibilityLabel: `Open gig-slot request at ${venue}${when ? ` on ${when}` : ""}`,
+      };
+    }
+    case "gig-for-band": {
+      const title = band?.name ?? "A band";
+      return {
+        title,
+        pill: "Wants a gig",
+        subtitle: details.targetDate,
+        avatarUrl: band?.imageUrl ?? null,
+        accessibilityLabel: `Open ${title} looking for a gig on ${details.targetDate}`,
+      };
+    }
+    case "night-at-venue": {
+      return {
+        title: details.concept,
+        pill: "Night",
+        subtitle:
+          details.possibleDates.length > 0
+            ? details.possibleDates.slice(0, 3).join(", ") +
+              (details.possibleDates.length > 3 ? " …" : "")
+            : null,
+        avatarUrl: null,
+        accessibilityLabel: `Open night concept ${details.concept}`,
+      };
+    }
+    case "promoter-for-venue-night": {
+      return {
+        title: details.concept ?? "Venue is free",
+        pill: details.proposedDate,
+        subtitle: null,
+        avatarUrl: null,
+        accessibilityLabel: `Open venue free on ${details.proposedDate}`,
+      };
+    }
+    case "band-for-musician": {
+      return {
+        title: `Musician — ${details.instrument}`,
+        pill: details.instrument,
+        subtitle: details.availability ?? null,
+        avatarUrl: null,
+        accessibilityLabel: `Open musician looking for a band — ${details.instrument}`,
+      };
+    }
+  }
+}
+
+function formatDate(datetime: Date | string): string {
+  const d = typeof datetime === "string" ? new Date(datetime) : datetime;
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 const styles = StyleSheet.create({
