@@ -100,3 +100,44 @@ Available skills:
 - `/code-review` — reviews code changes
 - `/smoke-test` — tests all features working together end-to-end
 - `/unit-test` — writes tests for complex pure functions
+
+## Gotchas (session-tested)
+
+### Always spawn dev agents with `isolation: "worktree"`
+When orchestrating work via the `Agent` tool with `subagent_type: dev` (or `code-review`, `qa`, etc.), pass `isolation: "worktree"`. The harness then creates its own git worktree for the agent and the agent has full write access to it. Without isolation, a pre-created worktree at `../musicians-<ticket>/` has caused permission-denied errors for the agent's Write/Bash calls — see the MUS-51 attempt in this project's history. The `isolation: "worktree"` path has been reliable ever since.
+
+### Drizzle-kit `generate` is interactive and may fail in sandboxes
+`pnpm db:generate` prompts for rename-vs-create disambiguation when it detects structural schema changes. In a sandboxed session that prompt can't be answered. When this happens, hand-write the migration SQL file in `packages/server/drizzle/NNNN_<name>.sql`, append a matching entry to `drizzle/meta/_journal.json`, and copy the previous snapshot JSON as the new one. Apply with `pnpm db:migrate`. See `0004_tidy_pete_ross.sql` (MUS-56 events→rehearsals rename) and `0005_rename_rehearsals_constraints.sql` (MUS-59 constraint renames) for the pattern.
+
+Postgres note: renaming a table with `ALTER TABLE ... RENAME TO` does **not** rename the underlying PK index, FK constraint, or sequence identifiers — you need explicit `ALTER INDEX / ALTER TABLE RENAME CONSTRAINT / ALTER SEQUENCE RENAME TO` statements alongside. MUS-59 cleaned up leftover `events_*` identifiers from MUS-56's rename.
+
+### Cleaning up stuck agent worktrees
+After an Agent-managed worktree finishes, its folder under `.claude/worktrees/agent-<id>/` can remain locked ("locked working tree, lock reason: claude agent agent-<id>"). Force-remove with:
+
+```
+git worktree remove -f -f .claude/worktrees/agent-<id>
+git branch -D worktree-agent-<id>
+```
+
+Always `cd` back to the repo root before running these — removing the worktree you're standing in leaves the shell with an invalid working directory.
+
+### Mobile TypeScript is now part of the root typecheck
+Root `pnpm typecheck` runs `tsc -b && pnpm --filter @musicians/mobile typecheck`. Mobile is not in the root tsc project-references graph (Expo + strict TS don't play well with `composite: true` without extra work), so a separate call keeps it in the CI gate. Added in MUS-56's follow-up after the schema widening silently broke mobile-only consumers.
+
+### Merging ticket branches into main
+When a dev agent finishes, its branch is cut from whatever `main` was at dev-start time. If other tickets land on `main` in the meantime, a fast-forward merge fails. Fix with:
+
+```
+git checkout <agent-branch>
+git rebase main                # resolve conflicts here if any
+git checkout main
+git merge --ff-only <agent-branch>
+```
+
+This keeps the `main` history linear (every ticket is one commit, no merge commits).
+
+### tRPC conventions reminder
+- **Always shape returns.** Use `db.select({ ...explicit projection })` or `.map(row => ({ ... }))`. Never `db.select().from(table)` without a projection — Drizzle row types leak snake_case column names to the client if you do.
+- **Coerce `ctx.user.id` once at the procedure boundary**: `const userId = Number(ctx.user.id)`. The JWT `sub` is a string.
+- **Discriminated-union Zod inputs** for polymorphic kinds (see `requests.create`, `expressionsOfInterest.create`). Structured so new branches slot in cleanly.
+- **No explicit DTO types in `@musicians/shared`** — use tRPC inference. If you need a named type client-side, use `inferRouterOutputs<AppRouter>` locally.
