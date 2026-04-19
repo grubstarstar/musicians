@@ -1,4 +1,4 @@
-import { AntDesign, Entypo, MaterialIcons } from "@expo/vector-icons";
+import { AntDesign, Entypo, FontAwesome6, MaterialIcons } from "@expo/vector-icons";
 import { DrawerActions } from "@react-navigation/native";
 import { Tabs, useNavigation } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity } from "react-native";
@@ -26,6 +26,15 @@ export default function TabsRoots() {
         options={{
           tabBarLabel: "Home",
           tabBarIcon: () => <Entypo name="home" size={22} color="white" />,
+        }}
+      />
+      <Tabs.Screen
+        name="requests"
+        options={{
+          tabBarLabel: "Requests",
+          tabBarIcon: () => (
+            <FontAwesome6 name="bullhorn" size={20} color="white" />
+          ),
         }}
       />
       <Tabs.Screen
