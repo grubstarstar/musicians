@@ -1,18 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { CollapsibleSection } from "../../../../src/components/CollapsibleSection";
+import { QueryBoundary } from "../../../../src/components/QueryBoundary";
 import { TrackList } from "../../../../src/components/band/TrackList";
 import { ChipRow } from "../../../../src/components/home/ChipRow";
 import { useImageColors } from "../../../../src/hooks/useImageColors";
@@ -22,36 +16,26 @@ const HERO_FALLBACK = "#0f0f11";
 
 export default function BandScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
-
   const parsedId = Number(id);
-  const isValidId = Number.isInteger(parsedId) && parsedId > 0;
 
-  const { data, isLoading, error } = useQuery({
-    ...trpc.bands.getById.queryOptions({ id: parsedId }),
-    enabled: isValidId,
-  });
+  if (!Number.isInteger(parsedId) || parsedId <= 0) {
+    return <BandNotFound />;
+  }
 
+  return (
+    <QueryBoundary notFoundFallback={<BandNotFound />}>
+      <BandScreenInner id={parsedId} />
+    </QueryBoundary>
+  );
+}
+
+function BandScreenInner({ id }: { id: number }) {
+  const router = useRouter();
+  const { data } = useSuspenseQuery(trpc.bands.getById.queryOptions({ id }));
   const { background, textColor } = useImageColors(
-    data?.imageUrl ?? "",
+    data.imageUrl ?? "",
     HERO_FALLBACK,
   );
-
-  if (!isValidId) {
-    return <BandNotFound />;
-  }
-
-  if (isLoading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color="#6c63ff" />
-      </View>
-    );
-  }
-
-  if (error || !data) {
-    return <BandNotFound />;
-  }
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: background }]}>
@@ -113,12 +97,6 @@ function BandNotFound() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f0f11" },
-  centered: {
-    flex: 1,
-    backgroundColor: "#0f0f11",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   heroWrapper: {
     height: 200,
     justifyContent: "flex-end",
