@@ -3,7 +3,6 @@ import type { AppRouter } from "@musicians/shared";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -16,16 +15,16 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { QueryBoundary } from "../../../../src/components/QueryBoundary";
-import { queryClient, trpc } from "../../../../src/trpc";
+import { QueryBoundary } from "../../../src/components/QueryBoundary";
+import { queryClient, trpc } from "../../../src/trpc";
 import {
   formatEoiStateLabel,
   formatRequestStatusLabel,
   formatUserDisplayName,
   getEoiStateColor,
   getRequestStatusColor,
-} from "../../../../src/utils/eoiLabels";
-import { formatRelative } from "../../../../src/utils/formatRelative";
+} from "../../../src/utils/eoiLabels";
+import { formatRelative } from "../../../src/utils/formatRelative";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type MyRequest = RouterOutputs["requests"]["listMine"][number];
@@ -43,18 +42,8 @@ export default function MyRequestsScreen() {
 }
 
 function ScreenHeader() {
-  const router = useRouter();
   return (
     <View style={styles.headerWrap}>
-      <Pressable
-        onPress={() => router.back()}
-        hitSlop={12}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        style={styles.backBtn}
-      >
-        <Ionicons name="chevron-back" size={28} color="#fff" />
-      </Pressable>
       <View style={styles.headerText}>
         <Text style={styles.heading}>My requests</Text>
         <Text style={styles.subheading}>
@@ -312,24 +301,13 @@ function EoiRow({ eoi, refetchKey }: EoiRowProps) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f0f11" },
   headerWrap: {
-    flexDirection: "row",
-    alignItems: "flex-start",
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
-    gap: 4,
-  },
-  backBtn: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -8,
-    marginTop: 2,
+    paddingTop: 16,
+    paddingBottom: 20,
   },
   headerText: { flex: 1 },
-  heading: { color: "#fff", fontSize: 26, fontWeight: "700" },
-  subheading: { color: "#7a7a85", fontSize: 13, marginTop: 4 },
+  heading: { color: "#fff", fontSize: 28, fontWeight: "700" },
+  subheading: { color: "#7a7a85", fontSize: 14, marginTop: 4 },
   listContent: { paddingHorizontal: 20, paddingBottom: 32 },
   card: {
     backgroundColor: "#1a1a1f",

@@ -13,6 +13,7 @@ import {
   createEoi,
   getRequestById,
   hasPendingEoiFromUser,
+  listMyEois,
   respondToEoi,
 } from '../requests/eoiQueries.js';
 import {
@@ -195,6 +196,13 @@ export const appRouter = router({
     }),
   }),
   expressionsOfInterest: router({
+    // Target-side list for the Applied tab (MUS-64). Returns the caller's own
+    // EoIs, newest first, each with the parent request + anchor pre-joined so
+    // the mobile list renders without further round-trips.
+    listMine: protectedProcedure.query(({ ctx }) => {
+      const userId = Number(ctx.user.id);
+      return listMyEois(userId);
+    }),
     create: protectedProcedure
       .input(
         z.object({

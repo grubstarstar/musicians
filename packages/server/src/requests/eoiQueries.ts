@@ -1,13 +1,19 @@
-import { and, asc, eq, isNull, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
 import { db } from '../db.js';
 import {
   bandMembers,
+  bands,
   expressionsOfInterest,
   gigSlots,
+  gigs,
   requests,
+  venues,
   type EoiDetails,
   type EoiState,
   type Request,
+  type RequestDetails,
+  type RequestKind,
+  type RequestStatus,
 } from '../schema.js';
 import { computeSlotOutcome } from './computeSlotOutcome.js';
 
@@ -265,5 +271,107 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
         slotsFilled: newSlotsFilled,
       },
     } as const;
+  });
+}
+
+// --- listMyEois (MUS-64) -------------------------------------------------
+//
+// Target-side list: the EoIs the calling user created, with just enough of
+// the parent request (and its anchor) to render a row. Mirrors the anchor
+// shape used by `listMyRequests` / `listOpenRequests` so the mobile client
+// has a familiar discriminated union to narrow on.
+
+export interface ShapedMyEoiRow {
+  eoi: {
+    id: number;
+    state: EoiState;
+    details: EoiDetails | null;
+    createdAt: Date;
+    decidedAt: Date | null;
+  };
+  request: {
+    id: number;
+    kind: RequestKind;
+    status: RequestStatus;
+    details: RequestDetails;
+    anchorBand: { id: number; name: string; imageUrl: string | null } | null;
+    anchorGig:
+      | { id: number; datetime: Date; venue: { id: number; name: string } }
+      | null;
+  };
+}
+
+/**
+ * Returns the EoIs the caller has created, ordered by most recent first, with
+ * the parent request + its anchor embedded so the client can render a single
+ * row without further round-trips (no N+1 — one joined query).
+ *
+ * Shape is camelCase-only across the tRPC boundary; never a raw Drizzle row.
+ */
+export async function listMyEois(userId: number): Promise<ShapedMyEoiRow[]> {
+  const rows = await db
+    .select({
+      eoiId: expressionsOfInterest.id,
+      eoiState: expressionsOfInterest.state,
+      eoiDetails: expressionsOfInterest.details,
+      eoiCreatedAt: expressionsOfInterest.created_at,
+      eoiDecidedAt: expressionsOfInterest.decided_at,
+      requestId: requests.id,
+      requestKind: requests.kind,
+      requestStatus: requests.status,
+      requestDetails: requests.details,
+      anchorBandId: bands.id,
+      anchorBandName: bands.name,
+      anchorBandImageUrl: bands.imageUrl,
+      anchorGigId: gigs.id,
+      anchorGigDatetime: gigs.datetime,
+      anchorGigVenueId: venues.id,
+      anchorGigVenueName: venues.name,
+    })
+    .from(expressionsOfInterest)
+    .innerJoin(requests, eq(requests.id, expressionsOfInterest.request_id))
+    .leftJoin(bands, eq(bands.id, requests.anchor_band_id))
+    .leftJoin(gigs, eq(gigs.id, requests.anchor_gig_id))
+    .leftJoin(venues, eq(venues.id, gigs.venue_id))
+    .where(eq(expressionsOfInterest.target_user_id, userId))
+    .orderBy(desc(expressionsOfInterest.created_at));
+
+  return rows.map((r) => {
+    const anchorBand =
+      r.anchorBandId !== null && r.anchorBandName !== null
+        ? {
+            id: r.anchorBandId,
+            name: r.anchorBandName,
+            imageUrl: r.anchorBandImageUrl,
+          }
+        : null;
+    const anchorGig =
+      r.anchorGigId !== null &&
+      r.anchorGigDatetime !== null &&
+      r.anchorGigVenueId !== null &&
+      r.anchorGigVenueName !== null
+        ? {
+            id: r.anchorGigId,
+            datetime: r.anchorGigDatetime,
+            venue: { id: r.anchorGigVenueId, name: r.anchorGigVenueName },
+          }
+        : null;
+    return {
+      eoi: {
+        id: r.eoiId,
+        state: r.eoiState,
+        details: r.eoiDetails,
+        createdAt: r.eoiCreatedAt,
+        decidedAt: r.eoiDecidedAt,
+      },
+      request: {
+        id: r.requestId,
+        kind: r.requestKind,
+        status: r.requestStatus,
+        details: r.requestDetails,
+        anchorBand,
+        anchorGig,
+      },
+    };
   });
 }

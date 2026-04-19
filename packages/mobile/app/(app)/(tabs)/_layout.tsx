@@ -1,15 +1,7 @@
-import { Entypo, Ionicons } from "@expo/vector-icons";
-import { DrawerActions } from "@react-navigation/native";
-import { Tabs, useNavigation } from "expo-router";
-import { StyleSheet, Text, TouchableOpacity } from "react-native";
+import { Entypo, FontAwesome6, Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
 
 export default function TabsRoots() {
-  const navigation = useNavigation();
-
-  function openDrawer() {
-    navigation.dispatch(DrawerActions.openDrawer());
-  }
-
   return (
     <Tabs
       screenOptions={{
@@ -34,6 +26,24 @@ export default function TabsRoots() {
           tabBarLabel: "Notices",
           tabBarIcon: () => (
             <Ionicons name="newspaper-outline" size={22} color="white" />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="my-requests"
+        options={{
+          tabBarLabel: "My requests",
+          tabBarIcon: () => (
+            <FontAwesome6 name="bullhorn" size={20} color="white" />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="applied"
+        options={{
+          tabBarLabel: "Applied",
+          tabBarIcon: () => (
+            <Ionicons name="paper-plane-outline" size={22} color="white" />
           ),
         }}
       />
