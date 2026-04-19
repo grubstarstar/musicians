@@ -1,4 +1,5 @@
 import type { DrawerContentComponentProps } from "@react-navigation/drawer";
+import { useRouter } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -10,12 +11,18 @@ import {
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { user, currentContext, setCurrentContext } = useUser();
   const { logout } = useAuth();
+  const router = useRouter();
   const displayName = user.firstName ?? user.username;
   const showSwitcher = user.availableContexts.length > 1;
 
   function handleSelect(next: UserContextType) {
     setCurrentContext(next);
     props.navigation.closeDrawer();
+  }
+
+  function handleOpenMyRequests() {
+    props.navigation.closeDrawer();
+    router.navigate("/my-requests");
   }
 
   async function handleLogout() {
@@ -55,6 +62,17 @@ export function AppDrawer(props: DrawerContentComponentProps) {
           })}
         </View>
       )}
+
+      <View style={styles.navSection}>
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={handleOpenMyRequests}
+          accessibilityRole="button"
+          accessibilityLabel="Open my requests"
+        >
+          <Text style={styles.navItemLabel}>My requests</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.spacer} />
 
@@ -110,6 +128,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#6c63ff",
   },
   rowLabel: { color: "#fff", fontSize: 16 },
+  navSection: {
+    marginTop: 24,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#2a2a30",
+    paddingTop: 16,
+  },
+  navItem: {
+    paddingVertical: 12,
+  },
+  navItemLabel: { color: "#fff", fontSize: 16 },
   spacer: { flex: 1 },
   logout: {
     paddingVertical: 12,

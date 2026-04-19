@@ -8,7 +8,13 @@ import {
   hasPendingEoiFromUser,
   respondToEoi,
 } from '../requests/eoiQueries.js';
-import { createRequest, isMemberOfBand, listOpenRequests } from '../requests/queries.js';
+import {
+  createRequest,
+  getOpenRequestWithBand,
+  isMemberOfBand,
+  listMyRequests,
+  listOpenRequests,
+} from '../requests/queries.js';
 import { requestKindEnum, type EoiDetails } from '../schema.js';
 import { protectedProcedure, publicProcedure, router } from './trpc.js';
 
@@ -70,6 +76,22 @@ export const appRouter = router({
     list: protectedProcedure
       .input(z.object({ kind: z.enum(requestKindEnum.enumValues).optional() }))
       .query(({ input }) => listOpenRequests({ kind: input.kind })),
+    getById: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const req = await getOpenRequestWithBand(input.id);
+        if (!req) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
+        }
+        return req;
+      }),
+    // Source-side list for the Manage Requests screen (MUS-55). Unlike
+    // `list` (which surfaces open requests to the community), this returns
+    // *the caller's* requests regardless of status, each with its EoIs.
+    listMine: protectedProcedure.query(({ ctx }) => {
+      const userId = Number(ctx.user.id);
+      return listMyRequests(userId);
+    }),
   }),
   expressionsOfInterest: router({
     create: protectedProcedure

@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   FlatList,
@@ -110,14 +111,15 @@ function RequestRow({
   createdAt,
   now,
 }: RequestRowProps) {
+  const router = useRouter();
   return (
     <Pressable
       onPress={() => {
-        // Detail view + Express Interest land in MUS-55; log for now so
-        // manual QA can confirm rows are tappable.
-        console.log(`Tapped request ${id}`);
+        router.navigate(`/request/${id}`);
       }}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`Open request from ${bandName} for ${instrument}`}
     >
       <Image
         source={{ uri: bandImageUrl ?? undefined }}
