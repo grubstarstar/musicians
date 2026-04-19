@@ -1,4 +1,4 @@
-import { AntDesign, Entypo, Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Entypo, Ionicons } from "@expo/vector-icons";
 import { DrawerActions } from "@react-navigation/native";
 import { Tabs, useNavigation } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity } from "react-native";
@@ -42,24 +42,6 @@ export default function TabsRoots() {
         options={{
           tabBarLabel: "Query",
           tabBarIcon: () => <Entypo name="chat" size={22} color="white" />,
-        }}
-      />
-      <Tabs.Screen
-        name="expo-ui-demo"
-        options={{
-          tabBarLabel: "Expo UI",
-          tabBarIcon: () => (
-            <MaterialIcons name="widgets" size={24} color="white" />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="controls-demo"
-        options={{
-          tabBarLabel: "Controls",
-          tabBarIcon: () => (
-            <AntDesign name="control" size={22} color="white" />
-          ),
         }}
       />
     </Tabs>
