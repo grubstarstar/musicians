@@ -8,6 +8,13 @@
       "when": 1776551323514,
       "tag": "0000_brave_ezekiel",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776563848801,
+      "tag": "0001_noisy_blonde_phantom",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,22 @@
 import bcrypt from 'bcrypt';
 import { and, eq, isNull, sql as sqlTag } from 'drizzle-orm';
 import { db, sql } from './db.js';
-import { bandMembers, bands, bandTracks, users } from './schema.js';
+import {
+  bandMembers,
+  bands,
+  bandTracks,
+  engineersLiveAudioGroups,
+  engineersRecordingStudios,
+  liveAudioGroups,
+  promoterGroups,
+  promoterGroupsVenues,
+  promotersPromoterGroups,
+  recordingStudios,
+  userRoles,
+  users,
+  venues,
+  type UserRoleName,
+} from './schema.js';
 
 const defaultPassword = 'password123';
 const defaultHash = await bcrypt.hash(defaultPassword, 12);
@@ -135,6 +150,212 @@ for (const band of allBands) {
   if (rows.length > 0) {
     await db.insert(bandMembers).values(rows);
     console.log(`Seeded ${rows.length} members for band: ${band.name}`);
+  }
+}
+
+// --- MUS-6: roles + role-owned entities ---
+
+async function ensureSingleton<
+  T extends { id: number },
+>(
+  label: string,
+  find: () => Promise<T | undefined>,
+  create: () => Promise<T>,
+): Promise<T> {
+  const existing = await find();
+  if (existing) {
+    console.log(`${label} already exists — skipped.`);
+    return existing;
+  }
+  const created = await create();
+  console.log(`Created ${label}.`);
+  return created;
+}
+
+const [adminRow] = await db.select({ id: users.id }).from(users).where(eq(users.username, 'admin'));
+
+if (!adminRow) {
+  console.warn('Admin user not found — cannot seed roles.');
+} else {
+  const adminRoleNames: UserRoleName[] = ['musician', 'promoter', 'engineer'];
+  const adminRoleIds: Record<UserRoleName, number> = {
+    musician: 0,
+    promoter: 0,
+    engineer: 0,
+  };
+
+  for (const role of adminRoleNames) {
+    const [existing] = await db
+      .select({ id: userRoles.id })
+      .from(userRoles)
+      .where(and(eq(userRoles.user_id, adminRow.id), eq(userRoles.role, role)));
+
+    if (existing) {
+      adminRoleIds[role] = existing.id;
+      console.log(`Admin already has role '${role}' — skipped.`);
+    } else {
+      const [inserted] = await db
+        .insert(userRoles)
+        .values({ user_id: adminRow.id, role })
+        .returning({ id: userRoles.id });
+      adminRoleIds[role] = inserted.id;
+      console.log(`Granted admin role '${role}'.`);
+    }
+  }
+
+  const promoterGroup = await ensureSingleton(
+    "promoter_group 'Sunset Presents'",
+    async () => {
+      const [row] = await db
+        .select()
+        .from(promoterGroups)
+        .where(eq(promoterGroups.name, 'Sunset Presents'));
+      return row;
+    },
+    async () => {
+      const [row] = await db
+        .insert(promoterGroups)
+        .values({ name: 'Sunset Presents' })
+        .returning();
+      return row;
+    },
+  );
+
+  const venue = await ensureSingleton(
+    "venue 'The Corner Stage'",
+    async () => {
+      const [row] = await db
+        .select()
+        .from(venues)
+        .where(eq(venues.name, 'The Corner Stage'));
+      return row;
+    },
+    async () => {
+      const [row] = await db
+        .insert(venues)
+        .values({ name: 'The Corner Stage', address: '123 Swanston St, Melbourne VIC 3000' })
+        .returning();
+      return row;
+    },
+  );
+
+  const studio = await ensureSingleton(
+    "recording_studio 'Echo Room Studios'",
+    async () => {
+      const [row] = await db
+        .select()
+        .from(recordingStudios)
+        .where(eq(recordingStudios.name, 'Echo Room Studios'));
+      return row;
+    },
+    async () => {
+      const [row] = await db
+        .insert(recordingStudios)
+        .values({
+          name: 'Echo Room Studios',
+          address: '45 Brunswick St, Fitzroy VIC 3065',
+        })
+        .returning();
+      return row;
+    },
+  );
+
+  const liveAudioGroup = await ensureSingleton(
+    "live_audio_group 'Front of House Collective'",
+    async () => {
+      const [row] = await db
+        .select()
+        .from(liveAudioGroups)
+        .where(eq(liveAudioGroups.name, 'Front of House Collective'));
+      return row;
+    },
+    async () => {
+      const [row] = await db
+        .insert(liveAudioGroups)
+        .values({ name: 'Front of House Collective' })
+        .returning();
+      return row;
+    },
+  );
+
+  // admin (promoter) -> promoter group
+  const [promoterLink] = await db
+    .select({ id: promotersPromoterGroups.id })
+    .from(promotersPromoterGroups)
+    .where(
+      and(
+        eq(promotersPromoterGroups.user_role_id, adminRoleIds.promoter),
+        eq(promotersPromoterGroups.promoter_group_id, promoterGroup.id),
+      ),
+    );
+  if (promoterLink) {
+    console.log('Admin promoter → promoter_group link already exists — skipped.');
+  } else {
+    await db.insert(promotersPromoterGroups).values({
+      user_role_id: adminRoleIds.promoter,
+      promoter_group_id: promoterGroup.id,
+    });
+    console.log('Linked admin (promoter) to promoter_group.');
+  }
+
+  // promoter group -> venue
+  const [venueLink] = await db
+    .select({ id: promoterGroupsVenues.id })
+    .from(promoterGroupsVenues)
+    .where(
+      and(
+        eq(promoterGroupsVenues.promoter_group_id, promoterGroup.id),
+        eq(promoterGroupsVenues.venue_id, venue.id),
+      ),
+    );
+  if (venueLink) {
+    console.log('promoter_group → venue link already exists — skipped.');
+  } else {
+    await db.insert(promoterGroupsVenues).values({
+      promoter_group_id: promoterGroup.id,
+      venue_id: venue.id,
+    });
+    console.log('Linked promoter_group to venue.');
+  }
+
+  // admin (engineer) -> recording studio
+  const [studioLink] = await db
+    .select({ id: engineersRecordingStudios.id })
+    .from(engineersRecordingStudios)
+    .where(
+      and(
+        eq(engineersRecordingStudios.user_role_id, adminRoleIds.engineer),
+        eq(engineersRecordingStudios.recording_studio_id, studio.id),
+      ),
+    );
+  if (studioLink) {
+    console.log('Admin engineer → recording_studio link already exists — skipped.');
+  } else {
+    await db.insert(engineersRecordingStudios).values({
+      user_role_id: adminRoleIds.engineer,
+      recording_studio_id: studio.id,
+    });
+    console.log('Linked admin (engineer) to recording_studio.');
+  }
+
+  // admin (engineer) -> live audio group
+  const [liveLink] = await db
+    .select({ id: engineersLiveAudioGroups.id })
+    .from(engineersLiveAudioGroups)
+    .where(
+      and(
+        eq(engineersLiveAudioGroups.user_role_id, adminRoleIds.engineer),
+        eq(engineersLiveAudioGroups.live_audio_group_id, liveAudioGroup.id),
+      ),
+    );
+  if (liveLink) {
+    console.log('Admin engineer → live_audio_group link already exists — skipped.');
+  } else {
+    await db.insert(engineersLiveAudioGroups).values({
+      user_role_id: adminRoleIds.engineer,
+      live_audio_group_id: liveAudioGroup.id,
+    });
+    console.log('Linked admin (engineer) to live_audio_group.');
   }
 }
 
