@@ -1,4 +1,4 @@
-import { AntDesign, Entypo, FontAwesome6, MaterialIcons } from "@expo/vector-icons";
+import { AntDesign, Entypo, Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { DrawerActions } from "@react-navigation/native";
 import { Tabs, useNavigation } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity } from "react-native";
@@ -33,7 +33,7 @@ export default function TabsRoots() {
         options={{
           tabBarLabel: "Discover",
           tabBarIcon: () => (
-            <FontAwesome6 name="bullhorn" size={20} color="white" />
+            <Ionicons name="compass-outline" size={24} color="white" />
           ),
         }}
       />

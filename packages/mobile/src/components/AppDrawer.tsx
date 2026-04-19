@@ -1,3 +1,4 @@
+import { FontAwesome6 } from "@expo/vector-icons";
 import type { DrawerContentComponentProps } from "@react-navigation/drawer";
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -70,6 +71,12 @@ export function AppDrawer(props: DrawerContentComponentProps) {
           accessibilityRole="button"
           accessibilityLabel="Open my requests"
         >
+          <FontAwesome6
+            name="bullhorn"
+            size={18}
+            color="#fff"
+            style={styles.navItemIcon}
+          />
           <Text style={styles.navItemLabel}>My requests</Text>
         </TouchableOpacity>
       </View>
@@ -136,7 +143,10 @@ const styles = StyleSheet.create({
   },
   navItem: {
     paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
   },
+  navItemIcon: { marginRight: 12, width: 20 },
   navItemLabel: { color: "#fff", fontSize: 16 },
   spacer: { flex: 1 },
   logout: {
