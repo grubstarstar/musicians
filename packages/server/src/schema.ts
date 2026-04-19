@@ -90,23 +90,6 @@ export const liveAudioGroups = pgTable('live_audio_groups', {
 
 // --- Join tables (all many-to-many with surrogate PK + unique composite) ---
 
-export const musiciansBands = pgTable(
-  'musicians_bands',
-  {
-    id: serial('id').primaryKey(),
-    user_role_id: integer('user_role_id')
-      .notNull()
-      .references(() => userRoles.id, { onDelete: 'cascade' }),
-    band_id: integer('band_id')
-      .notNull()
-      .references(() => bands.id, { onDelete: 'cascade' }),
-    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex('musicians_bands_user_role_id_band_id_uq').on(table.user_role_id, table.band_id),
-  ],
-);
-
 export const promotersPromoterGroups = pgTable(
   'promoters_promoter_groups',
   {
@@ -259,7 +242,6 @@ export type Venue = typeof venues.$inferSelect;
 export type RecordingStudio = typeof recordingStudios.$inferSelect;
 export type LiveAudioGroup = typeof liveAudioGroups.$inferSelect;
 
-export type MusicianBand = typeof musiciansBands.$inferSelect;
 export type PromoterPromoterGroup = typeof promotersPromoterGroups.$inferSelect;
 export type PromoterGroupVenue = typeof promoterGroupsVenues.$inferSelect;
 export type EngineerRecordingStudio = typeof engineersRecordingStudios.$inferSelect;

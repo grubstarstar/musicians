@@ -50,6 +50,13 @@
       "when": 1776586000000,
       "tag": "0006_gig_for_band_request_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776640000000,
+      "tag": "0007_drop_musicians_bands",
+      "breakpoints": true
     }
   ]
 }
