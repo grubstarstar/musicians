@@ -7,7 +7,7 @@
     "dev": "concurrently -n web,server -c blue,green \"pnpm --filter @musicians/web dev\" \"pnpm --filter @musicians/server dev\"",
     "mobile": "pnpm --filter @musicians/mobile",
     "mobile:start": "pnpm mobile start",
-    "mobile:expo": "pnpm mobile exec expo",
+    "mobile:eas-dev-build": "pnpm mobile exec eas build --platform ios --profile development",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:watch": "pnpm --filter @musicians/web test:watch",
