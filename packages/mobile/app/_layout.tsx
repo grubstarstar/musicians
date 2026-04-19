@@ -15,7 +15,13 @@ export default function RootLayout() {
         <AuthProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(app)" />
-            <Stack.Screen name="login" options={{ gestureEnabled: false }} />
+            <Stack.Screen
+              name="login"
+              options={{
+                gestureEnabled: false,
+                animationTypeForReplace: "pop",
+              }}
+            />
           </Stack>
         </AuthProvider>
       </GestureHandlerRootView>

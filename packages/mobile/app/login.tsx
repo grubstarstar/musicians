@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Redirect } from "expo-router";
 import { useState } from "react";
 import {
@@ -17,6 +18,7 @@ export default function LoginScreen() {
   const { status, login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -44,7 +46,10 @@ export default function LoginScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "top", "bottom"]}>
+    <SafeAreaView
+      style={styles.container}
+      edges={["left", "right", "top", "bottom"]}
+    >
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -63,28 +68,45 @@ export default function LoginScreen() {
               autoCorrect={false}
               autoComplete="username"
               textContentType="username"
-              placeholder="admin"
+              placeholder="username"
               placeholderTextColor="#555"
               editable={!submitting}
               returnKeyType="next"
             />
 
             <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="password"
-              textContentType="password"
-              placeholder="password"
-              placeholderTextColor="#555"
-              editable={!submitting}
-              returnKeyType="go"
-              onSubmitEditing={handleSubmit}
-            />
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.input, styles.passwordInput]}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="password"
+                textContentType="password"
+                placeholder="password"
+                placeholderTextColor="#555"
+                editable={!submitting}
+                returnKeyType="go"
+                onSubmitEditing={handleSubmit}
+              />
+              <Pressable
+                onPress={() => setShowPassword((v) => !v)}
+                style={styles.passwordToggle}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showPassword ? "Hide password" : "Show password"
+                }
+              >
+                <Ionicons
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={20}
+                  color="#7a7a85"
+                />
+              </Pressable>
+            </View>
 
             {error && (
               <Text style={styles.error} accessibilityRole="alert">
@@ -152,6 +174,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     color: "#fff",
     fontSize: 16,
+  },
+  passwordRow: { position: "relative", justifyContent: "center" },
+  passwordInput: { paddingRight: 44 },
+  passwordToggle: {
+    position: "absolute",
+    right: 12,
+    height: "100%",
+    justifyContent: "center",
+    paddingHorizontal: 4,
   },
   error: {
     color: "#ff6b6b",
