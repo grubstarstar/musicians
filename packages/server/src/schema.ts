@@ -1,5 +1,6 @@
 import {
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -228,6 +229,80 @@ export type EngineerLiveAudioGroup = typeof engineersLiveAudioGroups.$inferSelec
 
 export type Event = typeof events.$inferSelect;
 export type EventKind = (typeof eventKindEnum.enumValues)[number];
+
+// --- Requests + Expressions of Interest (MUS-50) ---
+//
+// `requests` is a polymorphic table: each row represents an opportunity/ask
+// posted by a user (e.g. a band looking for a drummer). The `kind` column
+// discriminates the shape of `details`. Only `'musician-for-band'` is
+// implemented now; more kinds (`'band-for-gig'`, `'musician-for-gig'`, etc.)
+// land in MUS-56 / MUS-58, so `RequestDetails` is modelled as a discriminated
+// union even though the union currently has a single branch.
+//
+// `expressions_of_interest` are per-target user responses against a request.
+// `state` moves pending → accepted / rejected / withdrawn / auto_rejected.
+// `auto_rejected` is for EoIs closed out by MUS-52 when `slots_filled` hits
+// `slot_count`. Any `bandMembers` side-effects live in MUS-52, not here.
+
+export const requestKindEnum = pgEnum('request_kind', ['musician-for-band']);
+
+export const requestStatusEnum = pgEnum('request_status', ['open', 'closed', 'cancelled']);
+
+export const eoiStateEnum = pgEnum('eoi_state', [
+  'pending',
+  'accepted',
+  'rejected',
+  'withdrawn',
+  'auto_rejected',
+]);
+
+export type RequestDetails = {
+  kind: 'musician-for-band';
+  instrument: string;
+  style?: string;
+  rehearsalCommitment?: string;
+};
+
+export type EoiDetails = {
+  kind: 'musician-for-band';
+  notes?: string;
+};
+
+export const requests = pgTable('requests', {
+  id: serial('id').primaryKey(),
+  kind: requestKindEnum('kind').notNull(),
+  source_user_id: integer('source_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  anchor_band_id: integer('anchor_band_id').references(() => bands.id, { onDelete: 'cascade' }),
+  details: jsonb('details').$type<RequestDetails>().notNull(),
+  slot_count: integer('slot_count').notNull().default(1),
+  slots_filled: integer('slots_filled').notNull().default(0),
+  status: requestStatusEnum('status').notNull().default('open'),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const expressionsOfInterest = pgTable('expressions_of_interest', {
+  id: serial('id').primaryKey(),
+  request_id: integer('request_id')
+    .notNull()
+    .references(() => requests.id, { onDelete: 'cascade' }),
+  target_user_id: integer('target_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  details: jsonb('details').$type<EoiDetails>(),
+  state: eoiStateEnum('state').notNull().default('pending'),
+  decided_at: timestamp('decided_at', { withTimezone: true }),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Request = typeof requests.$inferSelect;
+export type ExpressionOfInterest = typeof expressionsOfInterest.$inferSelect;
+export type RequestKind = (typeof requestKindEnum.enumValues)[number];
+export type RequestStatus = (typeof requestStatusEnum.enumValues)[number];
+export type EoiState = (typeof eoiStateEnum.enumValues)[number];
 
 export interface BandWithMembers extends Band {
   members: Pick<User, 'id' | 'username' | 'firstName' | 'lastName'>[];
