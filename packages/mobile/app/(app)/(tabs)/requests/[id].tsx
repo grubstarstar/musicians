@@ -16,14 +16,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { QueryBoundary } from "../../../../../src/components/QueryBoundary";
-import { queryClient, trpc } from "../../../../../src/trpc";
-import { formatRelative } from "../../../../../src/utils/formatRelative";
+import { QueryBoundary } from "../../../../src/components/QueryBoundary";
+import { queryClient, trpc } from "../../../../src/trpc";
+import { formatRelative } from "../../../../src/utils/formatRelative";
 
 /**
  * Request detail + Express Interest screen. Opens when a user taps a row on
- * the Requests tab (MUS-54). Wraps the tRPC suspense reads in QueryBoundary
- * per the project's mobile Suspense pattern.
+ * the Opportunities (Notices) tab (MUS-54). Wraps the tRPC suspense reads in
+ * QueryBoundary per the project's mobile Suspense pattern. Lives inside the
+ * Opportunities tab's own stack (MUS-62) so Back returns to the list.
  */
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

@@ -12,9 +12,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { QueryBoundary } from "../../../src/components/QueryBoundary";
-import { trpc, queryClient } from "../../../src/trpc";
-import { formatRelative } from "../../../src/utils/formatRelative";
+import { QueryBoundary } from "../../../../src/components/QueryBoundary";
+import { trpc, queryClient } from "../../../../src/trpc";
+import { formatRelative } from "../../../../src/utils/formatRelative";
 
 export default function RequestsScreen() {
   return (
@@ -125,7 +125,9 @@ function RequestRow({
   return (
     <Pressable
       onPress={() => {
-        router.navigate(`/request/${id}`);
+        // Nested route inside the Opportunities tab's own stack (MUS-62) so
+        // Back pops to this list rather than falling through to the Home tab.
+        router.navigate(`/requests/${id}`);
       }}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
