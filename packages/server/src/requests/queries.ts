@@ -4,8 +4,10 @@ import {
   bandMembers,
   bands,
   expressionsOfInterest,
+  gigs,
   requests,
   users,
+  venues,
 } from '../schema.js';
 import type {
   EoiDetails,
@@ -28,10 +30,30 @@ export interface ShapedRequest {
   slotsFilled: number;
   details: RequestDetails;
   anchorBandId: number | null;
+  anchorGigId: number | null;
   createdAt: Date;
 }
 
-export interface ShapedRequestWithBand extends Omit<ShapedRequest, 'anchorBandId'> {
+// Shape returned by `listOpenRequests`. Either `anchorBand` or `anchorGig`
+// is populated depending on the request kind (never both, never neither).
+// Consumers should narrow on `kind` (or on the presence of one anchor) before
+// rendering.
+//
+// `anchorBand` is retained for backwards-compat with the MUS-51 listing code
+// (web discovery list) and the mobile requests.tsx; it's populated only for
+// `musician-for-band` rows.
+export interface ShapedRequestWithAnchors extends Omit<ShapedRequest, 'anchorBandId' | 'anchorGigId'> {
+  anchorBand: { id: number; name: string; imageUrl: string | null } | null;
+  anchorGig: { id: number; datetime: Date; venue: { id: number; name: string } } | null;
+  // Back-compat alias for MUS-51 consumers that accessed `band` directly.
+  // Same reference as `anchorBand`.
+  band: { id: number; name: string; imageUrl: string | null } | null;
+}
+
+// Narrower shape used by queries that innerJoin on bands and are therefore
+// guaranteed to have a band anchor (MUS-55's detail + My Requests flows).
+// Keep this distinct from `ShapedRequestWithAnchors` whose `band` is nullable.
+export interface ShapedRequestWithBand extends Omit<ShapedRequest, 'anchorBandId' | 'anchorGigId'> {
   band: { id: number; name: string; imageUrl: string | null };
 }
 
@@ -60,14 +82,22 @@ export async function createRequest(
       slotsFilled: requests.slots_filled,
       details: requests.details,
       anchorBandId: requests.anchor_band_id,
+      anchorGigId: requests.anchor_gig_id,
       createdAt: requests.created_at,
     });
   return row;
 }
 
+/**
+ * Lists open requests across all kinds (optionally filtered to a single kind).
+ *
+ * Both anchors are left-joined so the response carries whichever one is
+ * relevant for each row: `anchorBand` for `musician-for-band`, `anchorGig`
+ * for `band-for-gig-slot`. Consumers pick the one matching the row's `kind`.
+ */
 export async function listOpenRequests(filter: {
   kind?: RequestKind;
-}): Promise<ShapedRequestWithBand[]> {
+}): Promise<ShapedRequestWithAnchors[]> {
   const whereClause = filter.kind
     ? and(eq(requests.status, 'open'), eq(requests.kind, filter.kind))
     : eq(requests.status, 'open');
@@ -81,19 +111,54 @@ export async function listOpenRequests(filter: {
       slotsFilled: requests.slots_filled,
       details: requests.details,
       createdAt: requests.created_at,
-      bandId: bands.id,
-      bandName: bands.name,
-      bandImageUrl: bands.imageUrl,
+      anchorBandId: bands.id,
+      anchorBandName: bands.name,
+      anchorBandImageUrl: bands.imageUrl,
+      anchorGigId: gigs.id,
+      anchorGigDatetime: gigs.datetime,
+      anchorGigVenueId: venues.id,
+      anchorGigVenueName: venues.name,
     })
     .from(requests)
-    .innerJoin(bands, eq(bands.id, requests.anchor_band_id))
+    .leftJoin(bands, eq(bands.id, requests.anchor_band_id))
+    .leftJoin(gigs, eq(gigs.id, requests.anchor_gig_id))
+    .leftJoin(venues, eq(venues.id, gigs.venue_id))
     .where(whereClause)
     .orderBy(desc(requests.created_at));
 
-  return rows.map(({ bandId, bandName, bandImageUrl, ...r }) => ({
-    ...r,
-    band: { id: bandId, name: bandName, imageUrl: bandImageUrl },
-  }));
+  return rows.map((r) => {
+    const anchorBand =
+      r.anchorBandId !== null && r.anchorBandName !== null
+        ? {
+            id: r.anchorBandId,
+            name: r.anchorBandName,
+            imageUrl: r.anchorBandImageUrl,
+          }
+        : null;
+    const anchorGig =
+      r.anchorGigId !== null &&
+      r.anchorGigDatetime !== null &&
+      r.anchorGigVenueId !== null &&
+      r.anchorGigVenueName !== null
+        ? {
+            id: r.anchorGigId,
+            datetime: r.anchorGigDatetime,
+            venue: { id: r.anchorGigVenueId, name: r.anchorGigVenueName },
+          }
+        : null;
+    return {
+      id: r.id,
+      kind: r.kind,
+      status: r.status,
+      slotCount: r.slotCount,
+      slotsFilled: r.slotsFilled,
+      details: r.details,
+      createdAt: r.createdAt,
+      anchorBand,
+      anchorGig,
+      band: anchorBand,
+    };
+  });
 }
 
 /**

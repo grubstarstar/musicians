@@ -77,26 +77,27 @@ function BandScreenInner({ id }: { id: number }) {
       )}
 
       <CollapsibleSection
-        title="Upcoming events"
+        title="Upcoming rehearsals"
         textStyleOverride={{ color: textColor }}
       >
-        {/* Independent QueryBoundary so events can load/fail separately from
-            the band profile; matches the project's mobile Suspense pattern. */}
+        {/* Independent QueryBoundary so rehearsals can load/fail separately
+            from the band profile; matches the project's mobile Suspense
+            pattern. */}
         <QueryBoundary>
-          <UpcomingEvents bandId={id} />
+          <UpcomingRehearsals bandId={id} />
         </QueryBoundary>
       </CollapsibleSection>
     </ScrollView>
   );
 }
 
-function UpcomingEvents({ bandId }: { bandId: number }) {
+function UpcomingRehearsals({ bandId }: { bandId: number }) {
   const { data } = useSuspenseQuery(
-    trpc.events.upcomingForBand.queryOptions({ bandId }),
+    trpc.rehearsals.upcomingForBand.queryOptions({ bandId }),
   );
 
   if (data.length === 0) {
-    return <Text style={styles.empty}>No upcoming events.</Text>;
+    return <Text style={styles.empty}>No upcoming rehearsals.</Text>;
   }
 
   return (
@@ -107,11 +108,9 @@ function UpcomingEvents({ bandId }: { bandId: number }) {
           <View>
             <View style={styles.eventHeader}>
               <Text style={styles.eventVenue}>{e.venue}</Text>
-              {e.kind === "rehearsal" && (
-                <View style={styles.rehearsalBadge}>
-                  <Text style={styles.rehearsalBadgeText}>Rehearsal</Text>
-                </View>
-              )}
+              <View style={styles.rehearsalBadge}>
+                <Text style={styles.rehearsalBadgeText}>Rehearsal</Text>
+              </View>
             </View>
             {e.doors && <Text style={styles.eventDoors}>Doors {e.doors}</Text>}
           </View>

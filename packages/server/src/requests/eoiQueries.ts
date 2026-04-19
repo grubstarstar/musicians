@@ -1,8 +1,9 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne } from 'drizzle-orm';
 import { db } from '../db.js';
 import {
   bandMembers,
   expressionsOfInterest,
+  gigSlots,
   requests,
   type EoiDetails,
   type EoiState,
@@ -27,10 +28,11 @@ export interface RespondOutcome {
   slotsFilled: number;
 }
 
-export type EoiCreateInput = {
-  kind: 'musician-for-band';
-  notes?: string;
-};
+// Mirrors `EoiDetails` in schema.ts. The discriminated-union shape lets
+// downstream outcome wiring switch on `kind` when applying side-effects.
+export type EoiCreateInput =
+  | { kind: 'musician-for-band'; notes?: string }
+  | { kind: 'band-for-gig-slot'; bandId: number };
 
 // --- Read helpers --------------------------------------------------------
 
@@ -105,7 +107,12 @@ export type RespondResult =
   | { kind: 'ok'; outcome: RespondOutcome }
   | { kind: 'not_found' }
   | { kind: 'forbidden' }
-  | { kind: 'not_pending' };
+  | { kind: 'not_pending' }
+  // `band-for-gig-slot`-specific failure modes. We surface these as structured
+  // results so the tRPC layer can map them to precise error codes instead of a
+  // generic 500.
+  | { kind: 'invalid_eoi_details' }
+  | { kind: 'no_open_slot' };
 
 export async function respondToEoi(input: RespondInput): Promise<RespondResult> {
   return db.transaction(async (tx) => {
@@ -160,6 +167,38 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
     }
 
     // ACCEPTED path.
+    //
+    // For `band-for-gig-slot` we have to reserve an open slot BEFORE marking
+    // the EoI accepted, so a "no slots left" race is surfaced as a clean
+    // precondition failure (the caller's transaction rolls back and the EoI
+    // stays pending). Doing the claim first also lets us capture the set_order
+    // we filled, which we could expose later if needed.
+    let claimedGigSlotId: number | null = null;
+    if (req.kind === 'band-for-gig-slot') {
+      if (eoi.details === null || eoi.details.kind !== 'band-for-gig-slot') {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+      if (req.anchor_gig_id === null) {
+        // Should be unreachable if insert invariants hold, but bail cleanly.
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+      const [openSlot] = await tx
+        .select({ id: gigSlots.id })
+        .from(gigSlots)
+        .where(and(eq(gigSlots.gig_id, req.anchor_gig_id), isNull(gigSlots.band_id)))
+        .orderBy(asc(gigSlots.set_order))
+        .limit(1);
+      if (!openSlot) {
+        return { kind: 'no_open_slot' } as const;
+      }
+      const bandId = eoi.details.bandId;
+      await tx
+        .update(gigSlots)
+        .set({ band_id: bandId, updated_at: now })
+        .where(eq(gigSlots.id, openSlot.id));
+      claimedGigSlotId = openSlot.id;
+    }
+
     const { newSlotsFilled, shouldCloseRequest } = computeSlotOutcome(
       req.slots_filled,
       req.slot_count,
@@ -196,6 +235,10 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
         .values({ band_id: req.anchor_band_id, user_id: eoi.target_user_id })
         .onConflictDoNothing();
     }
+    // `band-for-gig-slot` side-effect (slot claim) happened up-top so we could
+    // short-circuit on no-open-slot; `claimedGigSlotId` retained in case a
+    // future consumer wants to surface it.
+    void claimedGigSlotId;
 
     let autoRejectedEoiIds: number[] = [];
     if (shouldCloseRequest) {

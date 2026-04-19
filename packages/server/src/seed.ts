@@ -7,16 +7,17 @@ import {
   bandTracks,
   engineersLiveAudioGroups,
   engineersRecordingStudios,
-  events,
+  gigs,
+  gigSlots,
   liveAudioGroups,
   promoterGroups,
   promoterGroupsVenues,
   promotersPromoterGroups,
   recordingStudios,
+  rehearsals,
   userRoles,
   users,
   venues,
-  type EventKind,
   type UserRoleName,
 } from './schema.js';
 
@@ -155,22 +156,14 @@ for (const band of allBands) {
   }
 }
 
-// --- MUS-48: events (gigs / rehearsals) per band ---
-
-const eventVenues = [
-  'Wicks',
-  'The Lexington',
-  'Fox & Firkin',
-  'The Corner Stage',
-  'Northcote Social',
-  'Cherry Bar',
-  'The Tote',
-  'Brunswick Ballroom',
-];
+// --- MUS-48/MUS-56: rehearsals per band ---
+//
+// Originally this block seeded `events` (gigs + rehearsals). MUS-56 split
+// public gigs into their own `gigs` + `gig_slots` tables, so the per-band
+// table carries rehearsals only. Gig seeding happens further down, once the
+// promoter admin user + venue are in place.
 
 const rehearsalSpaces = ['Bakehouse Studios', 'Red Door Rehearsals', 'Wicks'];
-
-const doorsOptions: (string | null)[] = ['7pm', '8pm', '9pm', null];
 
 function addDays(base: Date, days: number): Date {
   const next = new Date(base);
@@ -178,31 +171,24 @@ function addDays(base: Date, days: number): Date {
   return next;
 }
 
-function buildEventsForBand(bandId: number, bandIndex: number): {
+function buildRehearsalsForBand(bandId: number, bandIndex: number): {
   band_id: number;
-  kind: EventKind;
   datetime: Date;
   venue: string;
   doors: string | null;
 }[] {
-  // Deterministic 3–8 events per band so re-seeds look identical and span
-  // the next few weeks. Alternating gig/rehearsal with the first event a gig.
-  const count = 3 + (bandIndex % 6); // 3..8
+  // Deterministic 2–4 rehearsals per band so re-seeds look identical.
+  const count = 2 + (bandIndex % 3);
   const today = new Date();
-  today.setUTCHours(19, 0, 0, 0); // 7pm UTC baseline
+  today.setUTCHours(19, 0, 0, 0);
 
   return Array.from({ length: count }, (_, i) => {
-    const isGig = i % 2 === 0;
-    const dayOffset = 3 + i * 4 + (bandIndex % 3); // stagger so bands don't collide
-    const datetime = addDays(today, dayOffset);
+    const dayOffset = 3 + i * 7 + (bandIndex % 3);
     return {
       band_id: bandId,
-      kind: (isGig ? 'gig' : 'rehearsal') as EventKind,
-      datetime,
-      venue: isGig
-        ? eventVenues[(bandIndex + i) % eventVenues.length]
-        : rehearsalSpaces[(bandIndex + i) % rehearsalSpaces.length],
-      doors: isGig ? doorsOptions[(bandIndex + i) % doorsOptions.length] : null,
+      datetime: addDays(today, dayOffset),
+      venue: rehearsalSpaces[(bandIndex + i) % rehearsalSpaces.length],
+      doors: null,
     };
   });
 }
@@ -211,17 +197,17 @@ for (let i = 0; i < allBands.length; i++) {
   const band = allBands[i];
   const [{ count }] = await db
     .select({ count: sqlTag<number>`count(*)::int` })
-    .from(events)
-    .where(eq(events.band_id, band.id));
+    .from(rehearsals)
+    .where(eq(rehearsals.band_id, band.id));
 
   if (count > 0) {
-    console.log(`Band '${band.name}' already has events — skipped.`);
+    console.log(`Band '${band.name}' already has rehearsals — skipped.`);
     continue;
   }
 
-  const rows = buildEventsForBand(band.id, i);
-  await db.insert(events).values(rows);
-  console.log(`Seeded ${rows.length} events for band: ${band.name}`);
+  const rows = buildRehearsalsForBand(band.id, i);
+  await db.insert(rehearsals).values(rows);
+  console.log(`Seeded ${rows.length} rehearsals for band: ${band.name}`);
 }
 
 // --- MUS-6: roles + role-owned entities ---
@@ -427,6 +413,39 @@ if (!adminRow) {
       live_audio_group_id: liveAudioGroup.id,
     });
     console.log('Linked admin (engineer) to live_audio_group.');
+  }
+
+  // --- MUS-56: a sample gig organised by admin (promoter) at The Corner Stage ---
+  //
+  // Three open slots so the `band-for-gig-slot` flow has something to apply
+  // to out of the box after a fresh seed.
+  const [{ count: existingGigCount }] = await db
+    .select({ count: sqlTag<number>`count(*)::int` })
+    .from(gigs)
+    .where(eq(gigs.organiser_user_id, adminRow.id));
+
+  if (existingGigCount === 0) {
+    const gigDatetime = new Date();
+    gigDatetime.setUTCDate(gigDatetime.getUTCDate() + 21);
+    gigDatetime.setUTCHours(20, 0, 0, 0);
+    const [gig] = await db
+      .insert(gigs)
+      .values({
+        datetime: gigDatetime,
+        venue_id: venue.id,
+        doors: '7pm',
+        organiser_user_id: adminRow.id,
+        status: 'open',
+      })
+      .returning({ id: gigs.id });
+    await db.insert(gigSlots).values([
+      { gig_id: gig.id, set_order: 0, fee: 25000 },
+      { gig_id: gig.id, set_order: 1, fee: 30000 },
+      { gig_id: gig.id, set_order: 2, fee: 40000 },
+    ]);
+    console.log(`Seeded sample gig #${gig.id} at '${venue.name}' with 3 open slots.`);
+  } else {
+    console.log('Admin already has seeded gig(s) — skipped.');
   }
 }
 

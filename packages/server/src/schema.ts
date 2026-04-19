@@ -187,27 +187,65 @@ export const engineersLiveAudioGroups = pgTable(
   ],
 );
 
-// --- Events (MUS-48) ---
+// --- Rehearsals (MUS-48, renamed from `events` in MUS-56) ---
 //
-// NOTE on MUS-44 forward-compat: `venue` is stored as freeform text intentionally.
-// MUS-44 will introduce anchor/link objects (to venues, promoter groups, studios,
-// etc.); those will arrive as additional nullable FK columns on this table, so
-// nothing about the current shape needs to change when MUS-44 lands.
+// Originally this table carried both gigs and rehearsals, discriminated by a
+// `kind` enum. MUS-56 split them: public gigs with multi-band lineups live in
+// `gigs` + `gig_slots` below, and this table is now rehearsals-only (no kind
+// column). `venue` is still freeform text for rehearsals — real venue FKs are
+// only required for public gigs.
 
-export const eventKindEnum = pgEnum('event_kind', ['gig', 'rehearsal']);
-
-export const events = pgTable('events', {
+export const rehearsals = pgTable('rehearsals', {
   id: serial('id').primaryKey(),
   band_id: integer('band_id')
     .notNull()
     .references(() => bands.id, { onDelete: 'cascade' }),
-  kind: eventKindEnum('kind').notNull(),
   datetime: timestamp('datetime', { withTimezone: true }).notNull(),
   venue: text('venue').notNull(),
   doors: text('doors'),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// --- Gigs + slots (MUS-56) ---
+//
+// A `gig` is a public show with a lineup of one or more bands, organised by
+// a user (typically in the `promoter` role). Each `gig_slot` is a set in the
+// lineup: may be open (band_id IS NULL) or filled (band_id set). Open slots
+// are the thing `band-for-gig-slot` requests solicit applications for.
+
+export const gigStatusEnum = pgEnum('gig_status', ['draft', 'open', 'confirmed', 'cancelled']);
+
+export const gigs = pgTable('gigs', {
+  id: serial('id').primaryKey(),
+  datetime: timestamp('datetime', { withTimezone: true }).notNull(),
+  venue_id: integer('venue_id')
+    .notNull()
+    .references(() => venues.id, { onDelete: 'restrict' }),
+  doors: text('doors'),
+  organiser_user_id: integer('organiser_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  status: gigStatusEnum('status').notNull().default('draft'),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const gigSlots = pgTable(
+  'gig_slots',
+  {
+    id: serial('id').primaryKey(),
+    gig_id: integer('gig_id')
+      .notNull()
+      .references(() => gigs.id, { onDelete: 'cascade' }),
+    band_id: integer('band_id').references(() => bands.id, { onDelete: 'set null' }),
+    set_order: integer('set_order').notNull(),
+    fee: integer('fee'),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('gig_slots_gig_id_set_order_uq').on(table.gig_id, table.set_order)],
+);
 
 export type User = typeof users.$inferSelect;
 export type Band = typeof bands.$inferSelect;
@@ -227,8 +265,11 @@ export type PromoterGroupVenue = typeof promoterGroupsVenues.$inferSelect;
 export type EngineerRecordingStudio = typeof engineersRecordingStudios.$inferSelect;
 export type EngineerLiveAudioGroup = typeof engineersLiveAudioGroups.$inferSelect;
 
-export type Event = typeof events.$inferSelect;
-export type EventKind = (typeof eventKindEnum.enumValues)[number];
+export type Rehearsal = typeof rehearsals.$inferSelect;
+
+export type Gig = typeof gigs.$inferSelect;
+export type GigSlot = typeof gigSlots.$inferSelect;
+export type GigStatus = (typeof gigStatusEnum.enumValues)[number];
 
 // --- Requests + Expressions of Interest (MUS-50) ---
 //
@@ -244,7 +285,10 @@ export type EventKind = (typeof eventKindEnum.enumValues)[number];
 // `auto_rejected` is for EoIs closed out by MUS-52 when `slots_filled` hits
 // `slot_count`. Any `bandMembers` side-effects live in MUS-52, not here.
 
-export const requestKindEnum = pgEnum('request_kind', ['musician-for-band']);
+export const requestKindEnum = pgEnum('request_kind', [
+  'musician-for-band',
+  'band-for-gig-slot',
+]);
 
 export const requestStatusEnum = pgEnum('request_status', ['open', 'closed', 'cancelled']);
 
@@ -256,17 +300,26 @@ export const eoiStateEnum = pgEnum('eoi_state', [
   'auto_rejected',
 ]);
 
-export type RequestDetails = {
-  kind: 'musician-for-band';
-  instrument: string;
-  style?: string;
-  rehearsalCommitment?: string;
-};
+// Discriminated union keyed on `kind`. Each branch mirrors the shape of its
+// matching request_kind enum value. When we add new kinds (musician-for-gig,
+// etc.) they land here as additional branches.
+export type RequestDetails =
+  | {
+      kind: 'musician-for-band';
+      instrument: string;
+      style?: string;
+      rehearsalCommitment?: string;
+    }
+  | {
+      kind: 'band-for-gig-slot';
+      gigId: number;
+      setLength?: number;
+      feeOffered?: number;
+    };
 
-export type EoiDetails = {
-  kind: 'musician-for-band';
-  notes?: string;
-};
+export type EoiDetails =
+  | { kind: 'musician-for-band'; notes?: string }
+  | { kind: 'band-for-gig-slot'; bandId: number };
 
 export const requests = pgTable('requests', {
   id: serial('id').primaryKey(),
@@ -274,7 +327,12 @@ export const requests = pgTable('requests', {
   source_user_id: integer('source_user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  // Anchor columns: exactly one is set depending on `kind`. `band-for-gig-slot`
+  // anchors to a gig; `musician-for-band` anchors to a band. Keeping them as
+  // independent nullable FKs (rather than a single polymorphic anchor_id +
+  // anchor_type pattern) keeps FK integrity and lets us query/join naturally.
   anchor_band_id: integer('anchor_band_id').references(() => bands.id, { onDelete: 'cascade' }),
+  anchor_gig_id: integer('anchor_gig_id').references(() => gigs.id, { onDelete: 'cascade' }),
   details: jsonb('details').$type<RequestDetails>().notNull(),
   slot_count: integer('slot_count').notNull().default(1),
   slots_filled: integer('slots_filled').notNull().default(0),
