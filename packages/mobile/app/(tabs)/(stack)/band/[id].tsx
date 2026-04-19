@@ -7,10 +7,32 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { CollapsibleSection } from "../../../../src/components/CollapsibleSection";
 import { QueryBoundary } from "../../../../src/components/QueryBoundary";
+import { TimelineList } from "../../../../src/components/home/TimelineList";
 import { TrackList } from "../../../../src/components/band/TrackList";
 import { ChipRow } from "../../../../src/components/home/ChipRow";
 import { useImageColors } from "../../../../src/hooks/useImageColors";
 import { trpc } from "../../../../src/trpc";
+
+// TODO(MUS-48): replace with trpc.events.upcomingForBand.queryOptions({ bandId })
+const MOCK_EVENTS = [
+  {
+    type: "rehearsal" as const,
+    datetime: new Date(2026, 4, 11),
+    venue: "Wicks",
+  },
+  {
+    type: "gig" as const,
+    datetime: new Date(2026, 4, 16),
+    venue: "The Lexington",
+    doors: "8pm",
+  },
+  {
+    type: "gig" as const,
+    datetime: new Date(2026, 5, 5),
+    venue: "Fox & Firkin",
+    doors: "9pm",
+  },
+];
 
 const HERO_FALLBACK = "#0f0f11";
 
@@ -74,6 +96,33 @@ function BandScreenInner({ id }: { id: number }) {
           <TrackList tracks={data.tracks} />
         </CollapsibleSection>
       )}
+
+      {/* Upcoming events — mock data until MUS-48 lands a real events endpoint */}
+      <CollapsibleSection
+        title="Upcoming events"
+        textStyleOverride={{ color: textColor }}
+      >
+        <TimelineList
+          items={MOCK_EVENTS.map((e) => ({
+            eventDatetime: e.datetime,
+            content: (
+              <View>
+                <View style={styles.eventHeader}>
+                  <Text style={styles.eventVenue}>{e.venue}</Text>
+                  {e.type === "rehearsal" && (
+                    <View style={styles.rehearsalBadge}>
+                      <Text style={styles.rehearsalBadgeText}>Rehearsal</Text>
+                    </View>
+                  )}
+                </View>
+                {e.doors && (
+                  <Text style={styles.eventDoors}>Doors {e.doors}</Text>
+                )}
+              </View>
+            ),
+          }))}
+        />
+      </CollapsibleSection>
     </ScrollView>
   );
 }
@@ -134,4 +183,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   notFoundText: { color: "#7a7a85", fontSize: 16 },
+  eventHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  eventVenue: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  eventDoors: { color: "#c8c8d0", fontSize: 13, marginTop: 2 },
+  rehearsalBadge: {
+    backgroundColor: "#2a2a30",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  rehearsalBadgeText: { color: "#a0a0b0", fontSize: 11, fontWeight: "600" },
 });
