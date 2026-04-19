@@ -1,7 +1,21 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db.js';
-import { gigSlots, gigs, venues } from '../schema.js';
+import { gigSlots, gigs, userRoles, venues } from '../schema.js';
 import type { GigStatus } from '../schema.js';
+
+/**
+ * Checks whether a user holds the `promoter` role. Used to gate gig-organiser
+ * actions (creating gigs, posting `band-for-gig-slot` requests). Returns
+ * `true` iff a `user_roles` row exists for this user with role = 'promoter'.
+ */
+export async function hasPromoterRole(userId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: userRoles.id })
+    .from(userRoles)
+    .where(and(eq(userRoles.user_id, userId), eq(userRoles.role, 'promoter')))
+    .limit(1);
+  return !!row;
+}
 
 // Shaped (camelCase, no raw row leaks) return type for a gig plus its slots.
 // Slots are always returned in `set_order` ascending order so the lineup

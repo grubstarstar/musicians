@@ -126,6 +126,26 @@ function RequestCard({ request, now, refetchKey }: RequestCardProps) {
   const [expanded, setExpanded] = useState(true);
   const pendingCount = request.eois.filter((e) => e.state === "pending").length;
 
+  // Surface whichever anchor applies to this request's kind. Musician-for-band
+  // requests anchor to a band; band-for-gig-slot anchors to a gig at a venue.
+  const header =
+    request.anchorBand !== null
+      ? {
+          title: request.anchorBand.name,
+          imageUrl: request.anchorBand.imageUrl,
+        }
+      : request.anchorGig !== null
+        ? {
+            title: `${request.anchorGig.venue.name} · ${new Date(request.anchorGig.datetime).toLocaleDateString()}`,
+            imageUrl: null,
+          }
+        : { title: "Untitled request", imageUrl: null };
+
+  const subtitle =
+    request.details.kind === "musician-for-band"
+      ? request.details.instrument
+      : "Band needed for gig slot";
+
   return (
     <View style={styles.card}>
       <Pressable
@@ -135,20 +155,18 @@ function RequestCard({ request, now, refetchKey }: RequestCardProps) {
         style={({ pressed }) => [styles.cardHeader, pressed && styles.pressed]}
       >
         <Image
-          source={{ uri: request.band.imageUrl ?? undefined }}
+          source={{ uri: header.imageUrl ?? undefined }}
           style={styles.bandThumb}
         />
         <View style={styles.cardHeaderBody}>
           <View style={styles.cardHeaderRow}>
             <Text style={styles.bandName} numberOfLines={1}>
-              {request.band.name}
+              {header.title}
             </Text>
             <StatusPill status={request.status} />
           </View>
           <Text style={styles.cardSubtitle}>
-            {request.details.kind === "musician-for-band"
-              ? request.details.instrument
-              : null}
+            {subtitle}
             {pendingCount > 0 && ` · ${pendingCount} pending`}
           </Text>
           <Text style={styles.cardMeta}>

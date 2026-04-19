@@ -5,6 +5,7 @@ import {
   countOpenSlots,
   createGig,
   getGigById,
+  hasPromoterRole,
   listGigsByOrganiser,
 } from '../gigs/queries.js';
 import { getUpcomingRehearsalsForBand } from '../rehearsals/queries.js';
@@ -74,6 +75,13 @@ export const appRouter = router({
       )
       .mutation(async ({ ctx, input }) => {
         const userId = Number(ctx.user.id);
+        const isPromoter = await hasPromoterRole(userId);
+        if (!isPromoter) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Only promoters can create gigs',
+          });
+        }
         return createGig(input, userId);
       }),
     listMine: protectedProcedure.query(({ ctx }) => {

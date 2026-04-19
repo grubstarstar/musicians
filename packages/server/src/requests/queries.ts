@@ -208,7 +208,7 @@ export interface ShapedEoiForManage extends SortableEoi {
   };
 }
 
-export interface ShapedRequestWithEois extends ShapedRequestWithBand {
+export interface ShapedRequestWithEois extends ShapedRequestWithAnchors {
   updatedAt: Date;
   eois: ShapedEoiForManage[];
 }
@@ -217,6 +217,10 @@ export interface ShapedRequestWithEois extends ShapedRequestWithBand {
  * Lists requests authored by the caller, regardless of status, newest first.
  * Each request embeds its EoIs with the target user summary. EoIs are sorted
  * pending-first, then most-recently decided (see `sortEoisForManage`).
+ *
+ * Both anchors are left-joined so the response includes whichever is relevant
+ * per row: `anchorBand` for `musician-for-band`, `anchorGig` for
+ * `band-for-gig-slot`. Mirrors the shape returned by `listOpenRequests`.
  *
  * Shape is camelCase-only across the tRPC boundary — never a raw Drizzle row.
  */
@@ -231,12 +235,18 @@ export async function listMyRequests(userId: number): Promise<ShapedRequestWithE
       details: requests.details,
       createdAt: requests.created_at,
       updatedAt: requests.updated_at,
-      bandId: bands.id,
-      bandName: bands.name,
-      bandImageUrl: bands.imageUrl,
+      anchorBandId: bands.id,
+      anchorBandName: bands.name,
+      anchorBandImageUrl: bands.imageUrl,
+      anchorGigId: gigs.id,
+      anchorGigDatetime: gigs.datetime,
+      anchorGigVenueId: venues.id,
+      anchorGigVenueName: venues.name,
     })
     .from(requests)
-    .innerJoin(bands, eq(bands.id, requests.anchor_band_id))
+    .leftJoin(bands, eq(bands.id, requests.anchor_band_id))
+    .leftJoin(gigs, eq(gigs.id, requests.anchor_gig_id))
+    .leftJoin(venues, eq(venues.id, gigs.venue_id))
     .where(eq(requests.source_user_id, userId))
     .orderBy(desc(requests.created_at));
 
@@ -279,6 +289,25 @@ export async function listMyRequests(userId: number): Promise<ShapedRequestWithE
           lastName: e.targetLastName,
         },
       }));
+    const anchorBand =
+      r.anchorBandId !== null && r.anchorBandName !== null
+        ? {
+            id: r.anchorBandId,
+            name: r.anchorBandName,
+            imageUrl: r.anchorBandImageUrl,
+          }
+        : null;
+    const anchorGig =
+      r.anchorGigId !== null &&
+      r.anchorGigDatetime !== null &&
+      r.anchorGigVenueId !== null &&
+      r.anchorGigVenueName !== null
+        ? {
+            id: r.anchorGigId,
+            datetime: r.anchorGigDatetime,
+            venue: { id: r.anchorGigVenueId, name: r.anchorGigVenueName },
+          }
+        : null;
     return {
       id: r.id,
       kind: r.kind,
@@ -288,7 +317,9 @@ export async function listMyRequests(userId: number): Promise<ShapedRequestWithE
       details: r.details,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
-      band: { id: r.bandId, name: r.bandName, imageUrl: r.bandImageUrl },
+      anchorBand,
+      anchorGig,
+      band: anchorBand,
       eois: sortEoisForManage(matching),
     };
   });
