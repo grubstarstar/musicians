@@ -91,7 +91,11 @@ function RequestDetailInner({ id }: { id: number }) {
   );
 
   const { details } = data;
-  if (details.kind !== "musician-for-band") {
+  // MUS-57 introduced counterpart kinds whose detail read returns a nullable
+  // `band`. This Applied detail screen is still the MUS-64 musician-for-band
+  // shape; fall back to RequestNotFound for the other kinds until a follow-up
+  // extends the Applied detail to cover band-for-gig-slot / gig-for-band.
+  if (details.kind !== "musician-for-band" || data.band === null) {
     return <RequestNotFound />;
   }
 

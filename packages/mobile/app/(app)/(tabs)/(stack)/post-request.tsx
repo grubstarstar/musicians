@@ -15,16 +15,20 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { QueryBoundary } from "../../../../src/components/QueryBoundary";
-import { trpc } from "../../../../src/trpc";
+import { queryClient, trpc } from "../../../../src/trpc";
 import {
   buildBandForGigSlotInput,
+  buildGigForBandInput,
   buildMusicianForBandInput,
   filterMyBands,
 } from "../../../../src/utils/requestInputs";
 
 // --- Kind selector ---------------------------------------------------------
 
-type RequestKind = "musician-for-band" | "band-for-gig-slot";
+type RequestKind =
+  | "musician-for-band"
+  | "band-for-gig-slot"
+  | "gig-for-band";
 
 const KIND_OPTIONS: { value: RequestKind; label: string; blurb: string }[] = [
   {
@@ -36,6 +40,11 @@ const KIND_OPTIONS: { value: RequestKind; label: string; blurb: string }[] = [
     value: "band-for-gig-slot",
     label: "Band for a gig slot",
     blurb: "I'm organising a gig and want bands to fill open slots.",
+  },
+  {
+    value: "gig-for-band",
+    label: "Gig for my band",
+    blurb: "We're a band and we're looking for a gig on a specific date.",
   },
 ];
 
@@ -91,16 +100,26 @@ function PostRequestForm() {
   const [setLength, setSetLength] = useState("");
   const [feeOffered, setFeeOffered] = useState("");
 
+  // gig-for-band form state (reuses `selectedBandId` / `bandPickerOpen` so
+  // the band picker widget doesn't need a second copy).
+  const [targetDate, setTargetDate] = useState("");
+  const [area, setArea] = useState("");
+  const [feeAsked, setFeeAsked] = useState("");
+
   const [error, setError] = useState<string | null>(null);
+  // Tracks which request was just created so we can show the suggestion card
+  // keyed on that specific id before navigating away.
+  const [createdRequestId, setCreatedRequestId] = useState<number | null>(null);
 
   const createRequest = useMutation(
     trpc.requests.create.mutationOptions({
-      onSuccess: () => {
-        if (router.canGoBack()) {
-          router.back();
-        } else {
-          router.navigate("/");
-        }
+      onSuccess: (data) => {
+        setCreatedRequestId(data.id);
+        // Ensure the matches view refetches — the new request may now appear
+        // as someone's counterpart.
+        queryClient.invalidateQueries({
+          queryKey: trpc.matches.listForUser.queryOptions().queryKey,
+        });
       },
       onError: (err) => {
         setError(err.message);
@@ -115,11 +134,19 @@ function PostRequestForm() {
   const selectedBand = myBands.find((b) => b.id === selectedBandId) ?? null;
   const selectedGig = myGigs.find((g) => g.id === selectedGigId) ?? null;
 
+  const targetDateValid = /^\d{4}-\d{2}-\d{2}$/.test(targetDate.trim());
+
   const canSubmit =
     !submitting &&
+    createdRequestId === null &&
     (kind === "musician-for-band"
       ? hasBands && selectedBandId !== null && instrument.trim().length > 0
-      : hasGigs && selectedGigId !== null && (selectedGig?.openSlots ?? 0) > 0);
+      : kind === "band-for-gig-slot"
+        ? hasGigs &&
+          selectedGigId !== null &&
+          (selectedGig?.openSlots ?? 0) > 0
+        : // gig-for-band
+          hasBands && selectedBandId !== null && targetDateValid);
 
   function handleSubmit() {
     if (!canSubmit) return;
@@ -143,6 +170,20 @@ function PostRequestForm() {
           feeOffered,
         }),
       );
+      return;
+    }
+    if (kind === "gig-for-band" && selectedBandId !== null) {
+      const payload = buildGigForBandInput({
+        bandId: selectedBandId,
+        targetDate,
+        area,
+        feeAsked,
+      });
+      if (!payload) {
+        setError("Target date must be in yyyy-mm-dd format (e.g. 2026-05-10)");
+        return;
+      }
+      createRequest.mutate(payload);
     }
   }
 
@@ -211,9 +252,9 @@ function PostRequestForm() {
           setStyle={setStyle}
           rehearsalCommitment={rehearsalCommitment}
           setRehearsalCommitment={setRehearsalCommitment}
-          submitting={submitting}
+          submitting={submitting || createdRequestId !== null}
         />
-      ) : (
+      ) : kind === "band-for-gig-slot" ? (
         <BandForGigSlotForm
           hasGigs={hasGigs}
           myGigs={myGigs}
@@ -226,7 +267,24 @@ function PostRequestForm() {
           setSetLength={setSetLength}
           feeOffered={feeOffered}
           setFeeOffered={setFeeOffered}
-          submitting={submitting}
+          submitting={submitting || createdRequestId !== null}
+        />
+      ) : (
+        <GigForBandForm
+          hasBands={hasBands}
+          myBands={myBands}
+          selectedBand={selectedBand}
+          selectedBandId={selectedBandId}
+          setSelectedBandId={setSelectedBandId}
+          pickerOpen={bandPickerOpen}
+          setPickerOpen={setBandPickerOpen}
+          targetDate={targetDate}
+          setTargetDate={setTargetDate}
+          area={area}
+          setArea={setArea}
+          feeAsked={feeAsked}
+          setFeeAsked={setFeeAsked}
+          submitting={submitting || createdRequestId !== null}
         />
       )}
 
@@ -236,25 +294,155 @@ function PostRequestForm() {
         </Text>
       )}
 
-      <Pressable
-        onPress={handleSubmit}
-        disabled={!canSubmit}
-        style={({ pressed }) => [
-          styles.button,
-          !canSubmit && styles.buttonDisabled,
-          pressed && canSubmit && styles.buttonPressed,
-        ]}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !canSubmit, busy: submitting }}
-      >
-        {submitting ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Post request</Text>
-        )}
-      </Pressable>
+      {createdRequestId === null ? (
+        <Pressable
+          onPress={handleSubmit}
+          disabled={!canSubmit}
+          style={({ pressed }) => [
+            styles.button,
+            !canSubmit && styles.buttonDisabled,
+            pressed && canSubmit && styles.buttonPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !canSubmit, busy: submitting }}
+        >
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Post request</Text>
+          )}
+        </Pressable>
+      ) : (
+        <>
+          {(kind === "band-for-gig-slot" || kind === "gig-for-band") && (
+            <QueryBoundary>
+              <MatchSuggestionsCard
+                createdRequestId={createdRequestId}
+                createdKind={kind}
+              />
+            </QueryBoundary>
+          )}
+          <Pressable
+            onPress={() => {
+              if (router.canGoBack()) router.back();
+              else router.navigate("/");
+            }}
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+            ]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.buttonText}>Done</Text>
+          </Pressable>
+        </>
+      )}
     </ScrollView>
   );
+}
+
+// --- Match suggestions card ------------------------------------------------
+
+interface MatchSuggestionsCardProps {
+  createdRequestId: number;
+  createdKind: "band-for-gig-slot" | "gig-for-band";
+}
+
+function MatchSuggestionsCard({
+  createdRequestId,
+  createdKind,
+}: MatchSuggestionsCardProps) {
+  const router = useRouter();
+  const { data: matches } = useSuspenseQuery(
+    trpc.matches.listForUser.queryOptions(),
+  );
+
+  // Narrow to matches whose `myRequest.id` is the one we just created so the
+  // suggestion is specifically relevant (vs their global matches list).
+  const relevant = matches.filter(
+    (m) => m.myRequest.id === createdRequestId,
+  );
+
+  if (relevant.length === 0) {
+    return (
+      <View style={styles.matchCard}>
+        <Text style={styles.matchCardTitle}>Request posted</Text>
+        <Text style={styles.matchCardBody}>
+          No matching counterpart posts yet. We&apos;ll surface them on the
+          Home screen when they appear.
+        </Text>
+      </View>
+    );
+  }
+
+  const counterpartNoun =
+    createdKind === "band-for-gig-slot" ? "bands" : "promoters";
+
+  return (
+    <View style={styles.matchCard}>
+      <Text style={styles.matchCardTitle}>
+        {relevant.length} {counterpartNoun} match your post
+      </Text>
+      <Text style={styles.matchCardBody}>
+        Tap to open and invite them.
+      </Text>
+      <View style={styles.matchList}>
+        {relevant.slice(0, 5).map((m) => (
+          <Pressable
+            key={m.counterpart.id}
+            onPress={() => router.navigate(`/request/${m.counterpart.id}`)}
+            style={({ pressed }) => [
+              styles.matchRow,
+              pressed && styles.matchRowPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={
+              m.counterpart.kind === "gig-for-band"
+                ? `View ${m.counterpart.bandName ?? "band"} looking for a gig on ${m.counterpart.targetDate}`
+                : `View gig slot on ${formatCounterpartDate(m.counterpart.gigDatetime)}`
+            }
+          >
+            <Text style={styles.matchRowText}>
+              {matchRowLabel(m.counterpart)}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="#7a7a85" />
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+type MatchCounterpart = {
+  kind: "band-for-gig-slot" | "gig-for-band";
+  bandName: string | null;
+  targetDate: string | null;
+  gigDatetime: Date | string | null;
+  gigVenueName: string | null;
+};
+
+function matchRowLabel(c: MatchCounterpart): string {
+  if (c.kind === "gig-for-band") {
+    const who = c.bandName ?? "A band";
+    const date = c.targetDate ?? "";
+    return `${who} — looking for a gig ${date}`.trim();
+  }
+  const date = formatCounterpartDate(c.gigDatetime);
+  const venue = c.gigVenueName ?? "a venue";
+  return `Gig slot at ${venue}${date ? ` on ${date}` : ""}`;
+}
+
+function formatCounterpartDate(
+  datetime: Date | string | null,
+): string {
+  if (datetime === null) return "";
+  const d = typeof datetime === "string" ? new Date(datetime) : datetime;
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 // --- Sub-form: musician-for-band ------------------------------------------
@@ -524,6 +712,130 @@ function formatGigSummary(gig: GigPick): string {
   return `${d} • ${gig.venue.name} • ${gig.openSlots}/${gig.totalSlots} open`;
 }
 
+// --- Sub-form: gig-for-band -----------------------------------------------
+
+function GigForBandForm(props: {
+  hasBands: boolean;
+  myBands: BandPick[];
+  selectedBand: BandPick | null;
+  selectedBandId: number | null;
+  setSelectedBandId: (id: number) => void;
+  pickerOpen: boolean;
+  setPickerOpen: (f: (v: boolean) => boolean) => void;
+  targetDate: string;
+  setTargetDate: (v: string) => void;
+  area: string;
+  setArea: (v: string) => void;
+  feeAsked: string;
+  setFeeAsked: (v: string) => void;
+  submitting: boolean;
+}) {
+  if (!props.hasBands) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyTitle}>You&apos;re not in any bands yet</Text>
+        <Text style={styles.emptyBody}>
+          Join or create a band before posting this kind of request.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.form}>
+      <Text style={styles.label}>Band</Text>
+      <Pressable
+        onPress={() => props.setPickerOpen((v) => !v)}
+        style={[styles.input, styles.pickerField]}
+        accessibilityRole="button"
+        accessibilityLabel="Select a band"
+        accessibilityState={{ expanded: props.pickerOpen }}
+        disabled={props.submitting}
+      >
+        <Text
+          style={[
+            styles.pickerText,
+            !props.selectedBand && styles.pickerPlaceholder,
+          ]}
+        >
+          {props.selectedBand ? props.selectedBand.name : "Select a band"}
+        </Text>
+        <Ionicons
+          name={props.pickerOpen ? "chevron-up" : "chevron-down"}
+          size={18}
+          color="#7a7a85"
+        />
+      </Pressable>
+      {props.pickerOpen && (
+        <View style={styles.pickerList}>
+          {props.myBands.map((band) => {
+            const isSelected = band.id === props.selectedBandId;
+            return (
+              <Pressable
+                key={band.id}
+                onPress={() => {
+                  props.setSelectedBandId(band.id);
+                  props.setPickerOpen(() => false);
+                }}
+                style={({ pressed }) => [
+                  styles.pickerOption,
+                  isSelected && styles.pickerOptionSelected,
+                  pressed && styles.pickerOptionPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+              >
+                <Text style={styles.pickerOptionText}>{band.name}</Text>
+                {isSelected && (
+                  <Ionicons name="checkmark" size={18} color="#6c63ff" />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      <Text style={styles.label}>Target date (yyyy-mm-dd)</Text>
+      <TextInput
+        style={styles.input}
+        value={props.targetDate}
+        onChangeText={props.setTargetDate}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholder="2026-05-10"
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+        returnKeyType="next"
+      />
+
+      <Text style={styles.label}>Area (optional)</Text>
+      <TextInput
+        style={styles.input}
+        value={props.area}
+        onChangeText={props.setArea}
+        autoCapitalize="words"
+        autoCorrect={false}
+        placeholder="e.g. Melbourne"
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+        returnKeyType="next"
+      />
+
+      <Text style={styles.label}>Fee asked in cents (optional)</Text>
+      <TextInput
+        style={styles.input}
+        value={props.feeAsked}
+        onChangeText={props.setFeeAsked}
+        keyboardType="numeric"
+        placeholder="e.g. 20000 for $200"
+        placeholderTextColor="#555"
+        editable={!props.submitting}
+        returnKeyType="done"
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f0f11" },
   flex: { flex: 1 },
@@ -660,4 +972,26 @@ const styles = StyleSheet.create({
     color: "#7a7a85",
     fontSize: 14,
   },
+  matchCard: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: "#1a1a1f",
+    borderRadius: 12,
+    gap: 8,
+  },
+  matchCardTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  matchCardBody: { color: "#7a7a85", fontSize: 13 },
+  matchList: { gap: 6, marginTop: 6 },
+  matchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#22222a",
+    borderRadius: 8,
+    gap: 8,
+  },
+  matchRowPressed: { opacity: 0.7 },
+  matchRowText: { color: "#fff", fontSize: 14, flexShrink: 1 },
 });

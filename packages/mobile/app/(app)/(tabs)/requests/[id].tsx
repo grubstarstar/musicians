@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -56,6 +56,8 @@ function RequestDetailInner({ id }: { id: number }) {
   const [notes, setNotes] = useState("");
   const [submittedEoi, setSubmittedEoi] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedGigId, setSelectedGigId] = useState<number | null>(null);
+  const [selectedBandId, setSelectedBandId] = useState<number | null>(null);
 
   // The self-authored + already-pending guards are enforced by the server
   // (FORBIDDEN / CONFLICT respectively) and surfaced here via the mutation
@@ -63,6 +65,15 @@ function RequestDetailInner({ id }: { id: number }) {
   // leak `source_user_id`.
   const requestQueryOptions = trpc.requests.getById.queryOptions({ id });
   const { data } = useSuspenseQuery(requestQueryOptions);
+  // Preload data the counterpart-kind forms below need to pre-fill a one-tap
+  // EoI. Cheap to fetch even for `musician-for-band` (single round-trip each)
+  // and keeps conditional Suspense noise out of the render path.
+  const { data: me } = useSuspenseQuery(trpc.system.whoami.queryOptions());
+  const { data: allBands } = useSuspenseQuery(trpc.bands.list.queryOptions());
+  const { data: myGigs } = useSuspenseQuery(trpc.gigs.listMine.queryOptions());
+  const myBandIds = allBands
+    .filter((b) => b.members.some((m) => m.id === Number(me.id)))
+    .map((b) => b.id);
 
   const now = new Date();
   const createdAt = new Date(data.createdAt);
@@ -80,6 +91,9 @@ function RequestDetailInner({ id }: { id: number }) {
             kind: "musician-for-band",
           }).queryKey,
         });
+        queryClient.invalidateQueries({
+          queryKey: trpc.matches.listForUser.queryOptions().queryKey,
+        });
       },
       onError: (err) => {
         const message = err.message;
@@ -94,30 +108,287 @@ function RequestDetailInner({ id }: { id: number }) {
     }),
   );
 
-  // Narrow the polymorphic request shape to the musician-for-band branch.
-  // `getById` only returns rows with a band anchor (innerJoin on bands), so
-  // any other kind would indicate a data issue — treat as not-found.
-  const { details } = data;
-  if (details.kind !== "musician-for-band") {
-    return <RequestNotFound />;
-  }
-
   const submitting = createEoi.isPending;
   const closed = data.status !== "open";
-  const canSubmit = !submittedEoi && !closed && !submitting;
 
-  function handleSubmit() {
-    if (!canSubmit) return;
-    const trimmed = notes.trim();
-    createEoi.mutate({
-      requestId: id,
-      details:
-        trimmed.length > 0
-          ? { kind: "musician-for-band", notes: trimmed }
-          : { kind: "musician-for-band" },
-    });
+  const { details } = data;
+
+  // --- musician-for-band ---------------------------------------------------
+  if (details.kind === "musician-for-band") {
+    if (data.band === null) return <RequestNotFound />;
+    const canSubmit = !submittedEoi && !closed && !submitting;
+    function handleSubmit() {
+      if (!canSubmit) return;
+      if (details.kind !== "musician-for-band") return;
+      const trimmed = notes.trim();
+      createEoi.mutate({
+        requestId: id,
+        details:
+          trimmed.length > 0
+            ? { kind: "musician-for-band", notes: trimmed }
+            : { kind: "musician-for-band" },
+      });
+    }
+    return (
+      <DetailLayout
+        router={router}
+        band={data.band}
+        createdAt={createdAt}
+        now={now}
+        heading={details.instrument}
+        extraRows={[
+          details.style ? { label: "Style", value: details.style } : null,
+          details.rehearsalCommitment
+            ? {
+                label: "Rehearsal commitment",
+                value: details.rehearsalCommitment,
+              }
+            : null,
+          { label: "Slots", value: `${data.slotsFilled} / ${data.slotCount} filled` },
+        ]}
+        closed={closed}
+        closedStatus={data.status}
+      >
+        <Text style={styles.sectionLabel}>Your note (optional)</Text>
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          value={notes}
+          onChangeText={setNotes}
+          multiline
+          numberOfLines={4}
+          placeholder="Links to demos, availability notes, etc."
+          placeholderTextColor="#555"
+          editable={!submittedEoi && !submitting}
+        />
+        <SubmitBlock
+          submittedEoi={submittedEoi}
+          submitting={submitting}
+          canSubmit={canSubmit}
+          error={error}
+          onSubmit={handleSubmit}
+          submittedMessage="Interest sent. The band will review and respond."
+        />
+      </DetailLayout>
+    );
   }
 
+  // --- band-for-gig-slot: caller is a band member, pick a band to apply ---
+  if (details.kind === "band-for-gig-slot") {
+    const candidateBands = allBands.filter((b) =>
+      myBandIds.includes(b.id),
+    );
+    const canSubmit =
+      !submittedEoi &&
+      !closed &&
+      !submitting &&
+      selectedBandId !== null &&
+      candidateBands.length > 0;
+    function handleSubmit() {
+      if (!canSubmit || selectedBandId === null) return;
+      createEoi.mutate({
+        requestId: id,
+        details: { kind: "band-for-gig-slot", bandId: selectedBandId },
+      });
+    }
+    const heading = data.gig
+      ? `Gig slot at ${data.gig.venue.name}`
+      : "Band for gig slot";
+    const gigDateStr = data.gig
+      ? new Date(data.gig.datetime).toLocaleDateString(undefined, {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
+      : "";
+    return (
+      <DetailLayout
+        router={router}
+        band={null}
+        createdAt={createdAt}
+        now={now}
+        heading={heading}
+        extraRows={[
+          gigDateStr ? { label: "Date", value: gigDateStr } : null,
+          details.setLength
+            ? { label: "Set length", value: `${details.setLength} min` }
+            : null,
+          details.feeOffered !== undefined
+            ? {
+                label: "Fee offered",
+                value: `$${(details.feeOffered / 100).toFixed(2)}`,
+              }
+            : null,
+          { label: "Slots", value: `${data.slotsFilled} / ${data.slotCount} filled` },
+        ]}
+        closed={closed}
+        closedStatus={data.status}
+      >
+        <Text style={styles.sectionLabel}>Apply as</Text>
+        {candidateBands.length === 0 ? (
+          <View style={styles.closedCard}>
+            <Text style={styles.closedTitle}>
+              You&apos;re not a member of any band yet
+            </Text>
+            <Text style={styles.closedBody}>
+              Join or create a band first to express interest in this slot.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.pickerList}>
+            {candidateBands.map((b) => {
+              const selected = b.id === selectedBandId;
+              return (
+                <Pressable
+                  key={b.id}
+                  onPress={() => setSelectedBandId(b.id)}
+                  style={({ pressed }) => [
+                    styles.pickerOption,
+                    selected && styles.pickerOptionSelected,
+                    pressed && styles.pickerOptionPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                >
+                  <Text style={styles.pickerOptionText}>{b.name}</Text>
+                  {selected && (
+                    <Ionicons name="checkmark" size={18} color="#6c63ff" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        <SubmitBlock
+          submittedEoi={submittedEoi}
+          submitting={submitting}
+          canSubmit={canSubmit}
+          error={error}
+          onSubmit={handleSubmit}
+          submittedMessage="Application sent. The promoter will review and respond."
+        />
+      </DetailLayout>
+    );
+  }
+
+  // --- gig-for-band: caller is a promoter, pick one of their gigs ---------
+  if (details.kind === "gig-for-band") {
+    const candidateGigs = myGigs.filter((g) => g.openSlots > 0);
+    const canSubmit =
+      !submittedEoi &&
+      !closed &&
+      !submitting &&
+      selectedGigId !== null &&
+      candidateGigs.length > 0;
+    function handleSubmit() {
+      if (!canSubmit || selectedGigId === null) return;
+      createEoi.mutate({
+        requestId: id,
+        details: { kind: "gig-for-band", gigId: selectedGigId },
+      });
+    }
+    const bandName = data.band?.name ?? "Band";
+    return (
+      <DetailLayout
+        router={router}
+        band={data.band}
+        createdAt={createdAt}
+        now={now}
+        heading={`${bandName} wants a gig`}
+        extraRows={[
+          { label: "Target date", value: details.targetDate },
+          details.area ? { label: "Area", value: details.area } : null,
+          details.feeAsked !== undefined
+            ? {
+                label: "Fee asked",
+                value: `$${(details.feeAsked / 100).toFixed(2)}`,
+              }
+            : null,
+        ]}
+        closed={closed}
+        closedStatus={data.status}
+      >
+        <Text style={styles.sectionLabel}>Offer one of your gigs</Text>
+        {candidateGigs.length === 0 ? (
+          <View style={styles.closedCard}>
+            <Text style={styles.closedTitle}>
+              No gigs with open slots
+            </Text>
+            <Text style={styles.closedBody}>
+              Create a gig with open slots to offer this band a slot.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.pickerList}>
+            {candidateGigs.map((g) => {
+              const selected = g.id === selectedGigId;
+              const date = new Date(g.datetime).toLocaleDateString(undefined, {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              });
+              return (
+                <Pressable
+                  key={g.id}
+                  onPress={() => setSelectedGigId(g.id)}
+                  style={({ pressed }) => [
+                    styles.pickerOption,
+                    selected && styles.pickerOptionSelected,
+                    pressed && styles.pickerOptionPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                >
+                  <Text style={styles.pickerOptionText}>
+                    {date} • {g.venue.name} • {g.openSlots}/{g.totalSlots} open
+                  </Text>
+                  {selected && (
+                    <Ionicons name="checkmark" size={18} color="#6c63ff" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        <SubmitBlock
+          submittedEoi={submittedEoi}
+          submitting={submitting}
+          canSubmit={canSubmit}
+          error={error}
+          onSubmit={handleSubmit}
+          submittedMessage="Offer sent. The band will review and respond."
+        />
+      </DetailLayout>
+    );
+  }
+
+  return <RequestNotFound />;
+}
+
+// --- Shared layout pieces for the three kinds ----------------------------
+
+interface DetailLayoutProps {
+  router: ReturnType<typeof useRouter>;
+  band: { name: string; imageUrl: string | null } | null;
+  createdAt: Date;
+  now: Date;
+  heading: string;
+  extraRows: ({ label: string; value: string } | null)[];
+  closed: boolean;
+  closedStatus: string;
+  children: ReactNode;
+}
+
+function DetailLayout({
+  router,
+  band,
+  createdAt,
+  now,
+  heading,
+  extraRows,
+  closed,
+  closedStatus,
+  children,
+}: DetailLayoutProps) {
   return (
     <ScrollView
       contentContainerStyle={styles.scroll}
@@ -135,97 +406,92 @@ function RequestDetailInner({ id }: { id: number }) {
         </Pressable>
       </View>
 
-      <View style={styles.bandCard}>
-        <Image
-          source={{ uri: data.band.imageUrl ?? undefined }}
-          style={styles.bandImage}
-        />
-        <View style={styles.bandCardBody}>
-          <Text style={styles.bandName} numberOfLines={1}>
-            {data.band.name}
-          </Text>
-          <Text style={styles.subtitle}>
-            Posted {formatRelative(createdAt, now)}
-          </Text>
-        </View>
-      </View>
-
-      <Text style={styles.sectionLabel}>Looking for</Text>
-      <View style={styles.detailsCard}>
-        <Text style={styles.detailsHeading}>{details.instrument}</Text>
-        {details.style && (
-          <DetailRow label="Style" value={details.style} />
-        )}
-        {details.rehearsalCommitment && (
-          <DetailRow
-            label="Rehearsal commitment"
-            value={details.rehearsalCommitment}
+      {band && (
+        <View style={styles.bandCard}>
+          <Image
+            source={{ uri: band.imageUrl ?? undefined }}
+            style={styles.bandImage}
           />
-        )}
-        <DetailRow
-          label="Slots"
-          value={`${data.slotsFilled} / ${data.slotCount} filled`}
-        />
+          <View style={styles.bandCardBody}>
+            <Text style={styles.bandName} numberOfLines={1}>
+              {band.name}
+            </Text>
+            <Text style={styles.subtitle}>
+              Posted {formatRelative(createdAt, now)}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      <Text style={styles.sectionLabel}>
+        {band ? "Looking for" : "Details"}
+      </Text>
+      <View style={styles.detailsCard}>
+        <Text style={styles.detailsHeading}>{heading}</Text>
+        {extraRows
+          .filter((r): r is { label: string; value: string } => r !== null)
+          .map((r, i) => (
+            <DetailRow key={`${r.label}-${i}`} label={r.label} value={r.value} />
+          ))}
       </View>
 
       {closed ? (
         <View style={styles.closedCard}>
-          <Text style={styles.closedTitle}>This request is {data.status}.</Text>
+          <Text style={styles.closedTitle}>This request is {closedStatus}.</Text>
           <Text style={styles.closedBody}>
-            The band is no longer accepting expressions of interest.
+            The poster is no longer accepting expressions of interest.
           </Text>
         </View>
       ) : (
-        <>
-          <Text style={styles.sectionLabel}>Your note (optional)</Text>
-          <TextInput
-            style={[styles.input, styles.multiline]}
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={4}
-            placeholder="Links to demos, availability notes, etc."
-            placeholderTextColor="#555"
-            editable={!submittedEoi && !submitting}
-          />
-
-          {submittedEoi && (
-            <View style={styles.successCard} accessibilityRole="alert">
-              <Ionicons name="checkmark-circle" size={18} color="#3fa66a" />
-              <Text style={styles.successText}>
-                Interest sent. The band will review and respond.
-              </Text>
-            </View>
-          )}
-
-          {error && !submittedEoi && (
-            <Text style={styles.error} accessibilityRole="alert">
-              {error}
-            </Text>
-          )}
-
-          <Pressable
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-            style={({ pressed }) => [
-              styles.button,
-              !canSubmit && styles.buttonDisabled,
-              pressed && canSubmit && styles.buttonPressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canSubmit, busy: submitting }}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>
-                {submittedEoi ? "Interest sent" : "Express interest"}
-              </Text>
-            )}
-          </Pressable>
-        </>
+        children
       )}
     </ScrollView>
+  );
+}
+
+function SubmitBlock(props: {
+  submittedEoi: boolean;
+  submitting: boolean;
+  canSubmit: boolean;
+  error: string | null;
+  onSubmit: () => void;
+  submittedMessage: string;
+}) {
+  return (
+    <>
+      {props.submittedEoi && (
+        <View style={styles.successCard} accessibilityRole="alert">
+          <Ionicons name="checkmark-circle" size={18} color="#3fa66a" />
+          <Text style={styles.successText}>{props.submittedMessage}</Text>
+        </View>
+      )}
+
+      {props.error && !props.submittedEoi && (
+        <Text style={styles.error} accessibilityRole="alert">
+          {props.error}
+        </Text>
+      )}
+
+      <Pressable
+        onPress={props.onSubmit}
+        disabled={!props.canSubmit}
+        style={({ pressed }) => [
+          styles.button,
+          !props.canSubmit && styles.buttonDisabled,
+          pressed && props.canSubmit && styles.buttonPressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !props.canSubmit, busy: props.submitting }}
+      >
+        {props.submitting ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>
+            {props.submittedEoi ? "Interest sent" : "Express interest"}
+          </Text>
+        )}
+      </Pressable>
+    </>
   );
 }
 
@@ -365,6 +631,25 @@ const styles = StyleSheet.create({
   },
   closedTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
   closedBody: { color: "#7a7a85", fontSize: 14 },
+  pickerList: {
+    backgroundColor: "#1a1a1f",
+    borderWidth: 1,
+    borderColor: "#2a2a30",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  pickerOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#2a2a30",
+  },
+  pickerOptionSelected: { backgroundColor: "#22222a" },
+  pickerOptionPressed: { opacity: 0.7 },
+  pickerOptionText: { color: "#fff", fontSize: 16, flexShrink: 1 },
   notFoundWrap: {
     flex: 1,
     alignItems: "center",

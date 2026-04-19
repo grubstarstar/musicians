@@ -15,6 +15,7 @@ import {
   type RequestKind,
   type RequestStatus,
 } from '../schema.js';
+import { computeGigAllocationUpdates } from './computeGigAllocationUpdates.js';
 import { computeSlotOutcome } from './computeSlotOutcome.js';
 
 // Shaped row returned across the tRPC boundary. Always camelCase; never a raw
@@ -38,7 +39,13 @@ export interface RespondOutcome {
 // downstream outcome wiring switch on `kind` when applying side-effects.
 export type EoiCreateInput =
   | { kind: 'musician-for-band'; notes?: string }
-  | { kind: 'band-for-gig-slot'; bandId: number };
+  | { kind: 'band-for-gig-slot'; bandId: number }
+  | {
+      kind: 'gig-for-band';
+      gigId: number;
+      bandForGigSlotRequestId?: number;
+      proposedFee?: number;
+    };
 
 // --- Read helpers --------------------------------------------------------
 
@@ -114,9 +121,9 @@ export type RespondResult =
   | { kind: 'not_found' }
   | { kind: 'forbidden' }
   | { kind: 'not_pending' }
-  // `band-for-gig-slot`-specific failure modes. We surface these as structured
-  // results so the tRPC layer can map them to precise error codes instead of a
-  // generic 500.
+  // Slot-allocation failure modes (both `band-for-gig-slot` and
+  // `gig-for-band` accepts may hit them). Structured so the tRPC layer maps
+  // them to precise error codes rather than a generic 500.
   | { kind: 'invalid_eoi_details' }
   | { kind: 'no_open_slot' };
 
@@ -174,11 +181,17 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
 
     // ACCEPTED path.
     //
-    // For `band-for-gig-slot` we have to reserve an open slot BEFORE marking
-    // the EoI accepted, so a "no slots left" race is surfaced as a clean
+    // For any kind that allocates a band into a gig (both `band-for-gig-slot`
+    // and `gig-for-band`) we claim an open `gig_slots` row BEFORE marking the
+    // EoI accepted, so a "no slots left" race is surfaced as a clean
     // precondition failure (the caller's transaction rolls back and the EoI
-    // stays pending). Doing the claim first also lets us capture the set_order
-    // we filled, which we could expose later if needed.
+    // stays pending).
+    //
+    // `allocationGigId` is the gig whose open-slot count is being decremented
+    // by this accept. For `band-for-gig-slot` it's the request's anchor gig;
+    // for `gig-for-band` it's the gig the promoter supplied on the EoI. Null
+    // for kinds that don't allocate into a gig (e.g. `musician-for-band`).
+    let allocationGigId: number | null = null;
     let claimedGigSlotId: number | null = null;
     if (req.kind === 'band-for-gig-slot') {
       if (eoi.details === null || eoi.details.kind !== 'band-for-gig-slot') {
@@ -188,21 +201,23 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
         // Should be unreachable if insert invariants hold, but bail cleanly.
         return { kind: 'invalid_eoi_details' } as const;
       }
-      const [openSlot] = await tx
-        .select({ id: gigSlots.id })
-        .from(gigSlots)
-        .where(and(eq(gigSlots.gig_id, req.anchor_gig_id), isNull(gigSlots.band_id)))
-        .orderBy(asc(gigSlots.set_order))
-        .limit(1);
-      if (!openSlot) {
-        return { kind: 'no_open_slot' } as const;
-      }
+      allocationGigId = req.anchor_gig_id;
       const bandId = eoi.details.bandId;
-      await tx
-        .update(gigSlots)
-        .set({ band_id: bandId, updated_at: now })
-        .where(eq(gigSlots.id, openSlot.id));
-      claimedGigSlotId = openSlot.id;
+      const claim = await claimOpenSlot(tx, allocationGigId, bandId, now);
+      if (!claim) return { kind: 'no_open_slot' } as const;
+      claimedGigSlotId = claim;
+    } else if (req.kind === 'gig-for-band') {
+      if (eoi.details === null || eoi.details.kind !== 'gig-for-band') {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+      if (req.details.kind !== 'gig-for-band') {
+        return { kind: 'invalid_eoi_details' } as const;
+      }
+      allocationGigId = eoi.details.gigId;
+      const bandId = req.details.bandId;
+      const claim = await claimOpenSlot(tx, allocationGigId, bandId, now);
+      if (!claim) return { kind: 'no_open_slot' } as const;
+      claimedGigSlotId = claim;
     }
 
     const { newSlotsFilled, shouldCloseRequest } = computeSlotOutcome(
@@ -241,9 +256,9 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
         .values({ band_id: req.anchor_band_id, user_id: eoi.target_user_id })
         .onConflictDoNothing();
     }
-    // `band-for-gig-slot` side-effect (slot claim) happened up-top so we could
-    // short-circuit on no-open-slot; `claimedGigSlotId` retained in case a
-    // future consumer wants to surface it.
+    // Slot claim (band-for-gig-slot / gig-for-band) happened up-top so we
+    // could short-circuit on no-open-slot; `claimedGigSlotId` retained in
+    // case a future consumer wants to surface it.
     void claimedGigSlotId;
 
     let autoRejectedEoiIds: number[] = [];
@@ -260,6 +275,60 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
         )
         .returning({ id: expressionsOfInterest.id });
       autoRejectedEoiIds = autoRejected.map((r) => r.id);
+    }
+
+    // Cross-request sibling update (MUS-57 slot-allocation invariant).
+    //
+    // Any acceptance that fills a `gig_slots` row on a gig must tick the
+    // counters of every open `band-for-gig-slot` request anchored to that
+    // gig — regardless of which side of the counterpart pair the accept came
+    // through. For the `band-for-gig-slot` kind this includes the request
+    // being accepted (which we've just updated above) so we exclude it here.
+    // For `gig-for-band` there's no self-overlap to worry about.
+    if (allocationGigId !== null) {
+      const siblings = await tx
+        .select({
+          id: requests.id,
+          slotsFilled: requests.slots_filled,
+          slotCount: requests.slot_count,
+        })
+        .from(requests)
+        .where(
+          and(
+            eq(requests.kind, 'band-for-gig-slot'),
+            eq(requests.anchor_gig_id, allocationGigId),
+            eq(requests.status, 'open'),
+            ne(requests.id, req.id),
+          ),
+        );
+
+      const updates = computeGigAllocationUpdates(siblings);
+      for (const update of updates) {
+        await tx
+          .update(requests)
+          .set({
+            slots_filled: update.newSlotsFilled,
+            status: update.shouldClose ? 'closed' : 'open',
+            updated_at: now,
+          })
+          .where(eq(requests.id, update.id));
+        if (update.shouldClose) {
+          const autoRejectedSib = await tx
+            .update(expressionsOfInterest)
+            .set({ state: 'auto_rejected', decided_at: now, updated_at: now })
+            .where(
+              and(
+                eq(expressionsOfInterest.request_id, update.id),
+                eq(expressionsOfInterest.state, 'pending'),
+              ),
+            )
+            .returning({ id: expressionsOfInterest.id });
+          autoRejectedEoiIds = [
+            ...autoRejectedEoiIds,
+            ...autoRejectedSib.map((r) => r.id),
+          ];
+        }
+      }
     }
 
     return {
@@ -374,4 +443,34 @@ export async function listMyEois(userId: number): Promise<ShapedMyEoiRow[]> {
       },
     };
   });
+}
+
+// --- Slot-claim helper ---------------------------------------------------
+//
+// Claims the lowest-`set_order` open slot on the given gig for the given
+// band. Returns the slot id on success, or null if no open slot existed.
+//
+// Kept as a transaction-local helper (takes `tx` rather than using `db`) so
+// all slot allocations happen within the same transaction as the parent
+// respondToEoi call and `no_open_slot` races roll back cleanly.
+type TxLike = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function claimOpenSlot(
+  tx: TxLike,
+  gigId: number,
+  bandId: number,
+  now: Date,
+): Promise<number | null> {
+  const [openSlot] = await tx
+    .select({ id: gigSlots.id })
+    .from(gigSlots)
+    .where(and(eq(gigSlots.gig_id, gigId), isNull(gigSlots.band_id)))
+    .orderBy(asc(gigSlots.set_order))
+    .limit(1);
+  if (!openSlot) return null;
+  await tx
+    .update(gigSlots)
+    .set({ band_id: bandId, updated_at: now })
+    .where(eq(gigSlots.id, openSlot.id));
+  return openSlot.id;
 }

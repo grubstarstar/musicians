@@ -18,8 +18,9 @@ import {
 } from '../requests/eoiQueries.js';
 import {
   createRequest,
-  getOpenRequestWithBand,
+  getRequestForDetail,
   isMemberOfBand,
+  listMatchesForUser,
   listMyRequests,
   listOpenRequests,
 } from '../requests/queries.js';
@@ -123,6 +124,17 @@ export const appRouter = router({
             setLength: z.number().int().positive().optional(),
             feeOffered: z.number().int().nonnegative().optional(),
           }),
+          // `gig-for-band` (MUS-57): band-side request; no anchor object.
+          // `targetDate` is a `yyyy-mm-dd` string (single date for this slice).
+          z.object({
+            kind: z.literal('gig-for-band'),
+            bandId: z.number().int().positive(),
+            targetDate: z
+              .string()
+              .regex(/^\d{4}-\d{2}-\d{2}$/, 'targetDate must be yyyy-mm-dd'),
+            area: z.string().min(1).optional(),
+            feeAsked: z.number().int().nonnegative().optional(),
+          }),
         ]),
       )
       .mutation(async ({ ctx, input }) => {
@@ -139,36 +151,49 @@ export const appRouter = router({
           return createRequest(input, userId);
         }
 
-        // band-for-gig-slot: only the gig organiser may post this kind of
-        // request. We look up the gig, verify ownership, then count the open
-        // slots to snapshot `slot_count` at request-creation time.
-        const gig = await getGigById(input.gigId);
-        if (!gig) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Gig not found' });
+        if (input.kind === 'band-for-gig-slot') {
+          // band-for-gig-slot: only the gig organiser may post this kind of
+          // request. We look up the gig, verify ownership, then count the
+          // open slots to snapshot `slot_count` at request-creation time.
+          const gig = await getGigById(input.gigId);
+          if (!gig) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Gig not found' });
+          }
+          if (gig.organiserUserId !== userId) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'Only the gig organiser may post a band-for-gig-slot request',
+            });
+          }
+          const openSlotCount = await countOpenSlots(input.gigId);
+          if (openSlotCount === 0) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'This gig has no open slots to fill',
+            });
+          }
+          return createRequest(
+            {
+              kind: 'band-for-gig-slot',
+              gigId: input.gigId,
+              setLength: input.setLength,
+              feeOffered: input.feeOffered,
+              openSlotCount,
+            },
+            userId,
+          );
         }
-        if (gig.organiserUserId !== userId) {
+
+        // gig-for-band: band must consent — enforce that the caller is a
+        // member of the band on whose behalf they're posting.
+        const allowed = await isMemberOfBand(userId, input.bandId);
+        if (!allowed) {
           throw new TRPCError({
             code: 'FORBIDDEN',
-            message: 'Only the gig organiser may post a band-for-gig-slot request',
+            message: 'You must be a member of this band to post this request',
           });
         }
-        const openSlotCount = await countOpenSlots(input.gigId);
-        if (openSlotCount === 0) {
-          throw new TRPCError({
-            code: 'PRECONDITION_FAILED',
-            message: 'This gig has no open slots to fill',
-          });
-        }
-        return createRequest(
-          {
-            kind: 'band-for-gig-slot',
-            gigId: input.gigId,
-            setLength: input.setLength,
-            feeOffered: input.feeOffered,
-            openSlotCount,
-          },
-          userId,
-        );
+        return createRequest(input, userId);
       }),
     list: protectedProcedure
       .input(z.object({ kind: z.enum(requestKindEnum.enumValues).optional() }))
@@ -181,7 +206,7 @@ export const appRouter = router({
     getById: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .query(async ({ input }) => {
-        const req = await getOpenRequestWithBand(input.id);
+        const req = await getRequestForDetail(input.id);
         if (!req) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
         }
@@ -217,6 +242,15 @@ export const appRouter = router({
               z.object({
                 kind: z.literal('band-for-gig-slot'),
                 bandId: z.number().int().positive(),
+              }),
+              // `gig-for-band` EoI (MUS-57): promoter offers one of their
+              // gigs to a band. Optional link to a sibling band-for-gig-slot
+              // request when it's the same engagement two ways.
+              z.object({
+                kind: z.literal('gig-for-band'),
+                gigId: z.number().int().positive(),
+                bandForGigSlotRequestId: z.number().int().positive().optional(),
+                proposedFee: z.number().int().nonnegative().optional(),
               }),
             ])
             .optional(),
@@ -257,6 +291,34 @@ export const appRouter = router({
               code: 'FORBIDDEN',
               message:
                 'You must be a member of the band to express interest on its behalf',
+            });
+          }
+        }
+        // `gig-for-band` EoIs must carry a `gigId` pointing to a gig the
+        // caller organises and which has at least one open slot.
+        if (req.kind === 'gig-for-band') {
+          if (!input.details || input.details.kind !== 'gig-for-band') {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message:
+                'A gig-for-band expression of interest must include details.gigId',
+            });
+          }
+          const gig = await getGigById(input.details.gigId);
+          if (!gig) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Gig not found' });
+          }
+          if (gig.organiserUserId !== userId) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'You may only offer gigs that you organise',
+            });
+          }
+          const openSlotCount = await countOpenSlots(input.details.gigId);
+          if (openSlotCount === 0) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'This gig has no open slots to offer',
             });
           }
         }
@@ -319,6 +381,15 @@ export const appRouter = router({
         }
         return result.outcome;
       }),
+  }),
+  // Matches (MUS-57): on-demand counterpart discovery. Surface-level view
+  // over the caller's open requests vs other users' open counterpart
+  // requests filtered through `matchesGigRequest`.
+  matches: router({
+    listForUser: protectedProcedure.query(({ ctx }) => {
+      const userId = Number(ctx.user.id);
+      return listMatchesForUser(userId);
+    }),
   }),
 });
 

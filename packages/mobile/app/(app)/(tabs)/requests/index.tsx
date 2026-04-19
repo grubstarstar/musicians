@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -37,6 +38,16 @@ function RequestsList() {
     kind: "musician-for-band",
   });
   const { data } = useSuspenseQuery(queryOptions);
+  // Matches are a secondary surface on this screen — we show a card at the
+  // top pointing users with an open `gig-for-band` post at the gig-slot
+  // requests that would match it (MUS-57).
+  const matchesQueryOptions = trpc.matches.listForUser.queryOptions();
+  const { data: allMatches } = useSuspenseQuery(matchesQueryOptions);
+  const gigForBandMatches = allMatches.filter(
+    (m) =>
+      m.myRequest.kind === "gig-for-band" &&
+      m.counterpart.kind === "band-for-gig-slot",
+  );
   const [refreshing, setRefreshing] = useState(false);
 
   // `useSuspenseQuery.refetch` exists but going through `queryClient` keeps
@@ -45,18 +56,23 @@ function RequestsList() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await queryClient.invalidateQueries({ queryKey: queryOptions.queryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryOptions.queryKey }),
+        queryClient.invalidateQueries({
+          queryKey: matchesQueryOptions.queryKey,
+        }),
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [queryOptions.queryKey]);
+  }, [queryOptions.queryKey, matchesQueryOptions.queryKey]);
 
   // `now` is captured once per render; that's fine here because relative
   // labels are only read at paint time. If we needed a ticking clock we'd
   // reach for a state interval instead.
   const now = new Date();
 
-  if (data.length === 0) {
+  if (data.length === 0 && gigForBandMatches.length === 0) {
     return (
       <View style={styles.emptyWrap}>
         <Text style={styles.emptyText}>No notices right now</Text>
@@ -69,6 +85,11 @@ function RequestsList() {
       data={data}
       keyExtractor={(item) => String(item.id)}
       contentContainerStyle={styles.listContent}
+      ListHeaderComponent={
+        gigForBandMatches.length > 0 ? (
+          <GigForBandMatchesCard matches={gigForBandMatches} />
+        ) : null
+      }
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -100,6 +121,66 @@ function RequestsList() {
       }}
     />
   );
+}
+
+// --- Match suggestion card -----------------------------------------------
+
+type GigForBandMatch = {
+  counterpart: {
+    id: number;
+    gigVenueName: string | null;
+    gigDatetime: Date | string | null;
+  };
+};
+
+function GigForBandMatchesCard({ matches }: { matches: GigForBandMatch[] }) {
+  const router = useRouter();
+  return (
+    <View style={styles.matchCard}>
+      <Text style={styles.matchCardTitle}>
+        {matches.length} gig slot{matches.length === 1 ? "" : "s"} match your
+        gig-for-band post
+      </Text>
+      <Text style={styles.matchCardBody}>Tap to open and express interest.</Text>
+      <View style={styles.matchList}>
+        {matches.slice(0, 5).map((m) => {
+          const venue = m.counterpart.gigVenueName ?? "a venue";
+          const date = formatCounterpartDate(m.counterpart.gigDatetime);
+          return (
+            <Pressable
+              key={m.counterpart.id}
+              onPress={() => router.navigate(`/request/${m.counterpart.id}`)}
+              style={({ pressed }) => [
+                styles.matchRow,
+                pressed && styles.matchRowPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`View gig slot at ${venue}${date ? ` on ${date}` : ""}`}
+            >
+              <Text style={styles.matchRowText} numberOfLines={1}>
+                {venue}
+                {date ? ` • ${date}` : ""}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#7a7a85" />
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function formatCounterpartDate(
+  datetime: Date | string | null,
+): string {
+  if (datetime === null) return "";
+  const d = typeof datetime === "string" ? new Date(datetime) : datetime;
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 interface RequestRowProps {
@@ -216,4 +297,28 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   emptyText: { color: "#7a7a85", fontSize: 15, textAlign: "center" },
+  matchCard: {
+    padding: 14,
+    backgroundColor: "#1a1a1f",
+    borderRadius: 12,
+    gap: 8,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#6c63ff",
+  },
+  matchCardTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  matchCardBody: { color: "#7a7a85", fontSize: 13 },
+  matchList: { gap: 6, marginTop: 4 },
+  matchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#22222a",
+    borderRadius: 8,
+    gap: 8,
+  },
+  matchRowPressed: { opacity: 0.7 },
+  matchRowText: { color: "#fff", fontSize: 14, flexShrink: 1 },
 });

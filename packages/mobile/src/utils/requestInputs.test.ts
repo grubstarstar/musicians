@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBandForGigSlotInput,
+  buildGigForBandInput,
   buildMusicianForBandInput,
   filterMyBands,
 } from './requestInputs';
@@ -129,5 +130,61 @@ describe('buildBandForGigSlotInput', () => {
       setLength: 30,
       feeOffered: 1000,
     });
+  });
+});
+
+describe('buildGigForBandInput', () => {
+  it('returns a valid payload with all optional fields', () => {
+    expect(
+      buildGigForBandInput({
+        bandId: 7,
+        targetDate: '2026-05-10',
+        area: ' Melbourne ',
+        feeAsked: '20000',
+      }),
+    ).toEqual({
+      kind: 'gig-for-band',
+      bandId: 7,
+      targetDate: '2026-05-10',
+      area: 'Melbourne',
+      feeAsked: 20000,
+    });
+  });
+
+  it('omits area and feeAsked when blank', () => {
+    expect(
+      buildGigForBandInput({
+        bandId: 3,
+        targetDate: '2026-05-10',
+        area: '   ',
+        feeAsked: '',
+      }),
+    ).toEqual({
+      kind: 'gig-for-band',
+      bandId: 3,
+      targetDate: '2026-05-10',
+    });
+  });
+
+  it('returns null when targetDate is not in yyyy-mm-dd format', () => {
+    expect(
+      buildGigForBandInput({
+        bandId: 1,
+        targetDate: 'next week',
+        area: '',
+        feeAsked: '',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null for empty targetDate', () => {
+    expect(
+      buildGigForBandInput({
+        bandId: 1,
+        targetDate: '',
+        area: '',
+        feeAsked: '',
+      }),
+    ).toBeNull();
   });
 });

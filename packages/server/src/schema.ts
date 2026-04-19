@@ -288,6 +288,7 @@ export type GigStatus = (typeof gigStatusEnum.enumValues)[number];
 export const requestKindEnum = pgEnum('request_kind', [
   'musician-for-band',
   'band-for-gig-slot',
+  'gig-for-band',
 ]);
 
 export const requestStatusEnum = pgEnum('request_status', ['open', 'closed', 'cancelled']);
@@ -315,11 +316,32 @@ export type RequestDetails =
       gigId: number;
       setLength?: number;
       feeOffered?: number;
+    }
+  // `gig-for-band` (MUS-57): a band broadcasts that it's looking for a gig on
+  // a specific date. No anchor object on the request side — the gig is
+  // supplied by the promoter on the EoI (below). Single date only for this
+  // slice; date ranges are a documented follow-up.
+  | {
+      kind: 'gig-for-band';
+      bandId: number;
+      targetDate: string; // ISO yyyy-mm-dd, no time component
+      area?: string;
+      feeAsked?: number;
     };
 
 export type EoiDetails =
   | { kind: 'musician-for-band'; notes?: string }
-  | { kind: 'band-for-gig-slot'; bandId: number };
+  | { kind: 'band-for-gig-slot'; bandId: number }
+  // `gig-for-band` EoI (MUS-57): a promoter expresses interest in the band by
+  // offering one of their existing gigs. Acceptance slots the band into an
+  // open `gig_slots` row on that gig. `bandForGigSlotRequestId` is optional
+  // and captures the two-sided-same-engagement link when present.
+  | {
+      kind: 'gig-for-band';
+      gigId: number;
+      bandForGigSlotRequestId?: number;
+      proposedFee?: number;
+    };
 
 export const requests = pgTable('requests', {
   id: serial('id').primaryKey(),

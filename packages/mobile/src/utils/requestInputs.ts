@@ -24,6 +24,14 @@ export interface BandForGigSlotInput {
   feeOffered?: number;
 }
 
+export interface GigForBandInput {
+  kind: 'gig-for-band';
+  bandId: number;
+  targetDate: string; // ISO yyyy-mm-dd
+  area?: string;
+  feeAsked?: number;
+}
+
 /**
  * Filters `bands.list` down to bands where the caller is a member.
  *
@@ -71,6 +79,34 @@ export function buildBandForGigSlotInput(args: {
   const feeOffered = Number.parseInt(args.feeOffered.trim(), 10);
   if (Number.isFinite(feeOffered) && feeOffered >= 0) {
     payload.feeOffered = feeOffered;
+  }
+  return payload;
+}
+
+/**
+ * Validates and shapes the gig-for-band form input. `targetDate` must already
+ * be a `yyyy-mm-dd` string — the form sets this via a date picker rather than
+ * freeform text. We still validate because the Zod server contract rejects
+ * anything else, and surfacing the error client-side is kinder than a 400.
+ */
+export function buildGigForBandInput(args: {
+  bandId: number;
+  targetDate: string;
+  area: string;
+  feeAsked: string;
+}): GigForBandInput | null {
+  const date = args.targetDate.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const payload: GigForBandInput = {
+    kind: 'gig-for-band',
+    bandId: args.bandId,
+    targetDate: date,
+  };
+  const area = args.area.trim();
+  if (area.length > 0) payload.area = area;
+  const feeAsked = Number.parseInt(args.feeAsked.trim(), 10);
+  if (Number.isFinite(feeAsked) && feeAsked >= 0) {
+    payload.feeAsked = feeAsked;
   }
   return payload;
 }

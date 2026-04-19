@@ -128,4 +128,52 @@ describe('buildRequestInsertValues', () => {
       expect(result.status).toBe('open');
     });
   });
+
+  describe('gig-for-band', () => {
+    it('maps a gig-for-band input with all fields', () => {
+      const input: RequestCreateInput = {
+        kind: 'gig-for-band',
+        bandId: 9,
+        targetDate: '2026-05-10',
+        area: 'Melbourne',
+        feeAsked: 20000,
+      };
+
+      expect(buildRequestInsertValues(input, 4)).toEqual({
+        kind: 'gig-for-band',
+        source_user_id: 4,
+        anchor_band_id: null,
+        anchor_gig_id: null,
+        details: {
+          kind: 'gig-for-band',
+          bandId: 9,
+          targetDate: '2026-05-10',
+          area: 'Melbourne',
+          feeAsked: 20000,
+        },
+        slot_count: 1,
+        slots_filled: 0,
+        status: 'open',
+      });
+    });
+
+    it('omits optional area and feeAsked from details when not provided', () => {
+      const input: RequestCreateInput = {
+        kind: 'gig-for-band',
+        bandId: 2,
+        targetDate: '2026-05-10',
+      };
+
+      const result = buildRequestInsertValues(input, 1);
+
+      expect(result.details).toEqual({
+        kind: 'gig-for-band',
+        bandId: 2,
+        targetDate: '2026-05-10',
+      });
+      expect(result.slot_count).toBe(1);
+      expect(result.anchor_band_id).toBeNull();
+      expect(result.anchor_gig_id).toBeNull();
+    });
+  });
 });

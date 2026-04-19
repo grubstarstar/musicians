@@ -43,6 +43,13 @@
       "when": 1776583000000,
       "tag": "0005_rename_rehearsals_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776586000000,
+      "tag": "0006_gig_for_band_request_kind",
+      "breakpoints": true
     }
   ]
 }

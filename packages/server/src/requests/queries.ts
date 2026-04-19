@@ -20,6 +20,7 @@ import {
   buildRequestInsertValues,
   type RequestCreateInput,
 } from './buildRequestInsertValues.js';
+import { matchesGigRequest } from './matchesGigRequest.js';
 import { sortEoisForManage, type SortableEoi } from './sortEoisForManage.js';
 
 export interface ShapedRequest {
@@ -55,6 +56,20 @@ export interface ShapedRequestWithAnchors extends Omit<ShapedRequest, 'anchorBan
 // Keep this distinct from `ShapedRequestWithAnchors` whose `band` is nullable.
 export interface ShapedRequestWithBand extends Omit<ShapedRequest, 'anchorBandId' | 'anchorGigId'> {
   band: { id: number; name: string; imageUrl: string | null };
+}
+
+// Nullable-band variant used for request detail reads since MUS-57 added
+// counterpart kinds (`band-for-gig-slot`, `gig-for-band`) that don't have a
+// band anchor. `band` is populated for `musician-for-band` and for
+// `gig-for-band` (where the band sits inside `details.bandId`, resolved via
+// a separate lookup). `gig` is populated for `band-for-gig-slot`.
+export interface ShapedRequestForDetail extends Omit<ShapedRequest, 'anchorBandId' | 'anchorGigId'> {
+  band: { id: number; name: string; imageUrl: string | null } | null;
+  gig: {
+    id: number;
+    datetime: Date;
+    venue: { id: number; name: string };
+  } | null;
 }
 
 export async function isMemberOfBand(userId: number, bandId: number): Promise<boolean> {
@@ -176,6 +191,11 @@ export async function listOpenRequests(filter: {
  * Single-request read used by the Express Interest detail screen. Same shape
  * as a row from `listOpenRequests` so the detail / list views can share code.
  * Returns null if the request doesn't exist; caller maps to NOT_FOUND.
+ *
+ * Note: this variant innerJoins on bands so only `musician-for-band` rows
+ * (which have a band anchor) are returned. Retained for backward compat
+ * with MUS-55's mobile detail flow that hard-codes `data.band`. Newer flows
+ * should use `getRequestForDetail` which handles the counterpart kinds too.
  */
 export async function getOpenRequestWithBand(
   requestId: number,
@@ -201,6 +221,85 @@ export async function getOpenRequestWithBand(
   if (!row) return null;
   const { bandId, bandName, bandImageUrl, ...rest } = row;
   return { ...rest, band: { id: bandId, name: bandName, imageUrl: bandImageUrl } };
+}
+
+/**
+ * Detail read that works for any request kind (MUS-57). Left-joins both
+ * anchors and resolves the `gig-for-band` band lazily via `details.bandId`.
+ * Returns null if no row matches.
+ */
+export async function getRequestForDetail(
+  requestId: number,
+): Promise<ShapedRequestForDetail | null> {
+  const [row] = await db
+    .select({
+      id: requests.id,
+      kind: requests.kind,
+      status: requests.status,
+      slotCount: requests.slot_count,
+      slotsFilled: requests.slots_filled,
+      details: requests.details,
+      createdAt: requests.created_at,
+      anchorBandId: bands.id,
+      anchorBandName: bands.name,
+      anchorBandImageUrl: bands.imageUrl,
+      anchorGigId: gigs.id,
+      anchorGigDatetime: gigs.datetime,
+      anchorGigVenueId: venues.id,
+      anchorGigVenueName: venues.name,
+    })
+    .from(requests)
+    .leftJoin(bands, eq(bands.id, requests.anchor_band_id))
+    .leftJoin(gigs, eq(gigs.id, requests.anchor_gig_id))
+    .leftJoin(venues, eq(venues.id, gigs.venue_id))
+    .where(eq(requests.id, requestId))
+    .limit(1);
+  if (!row) return null;
+
+  let band =
+    row.anchorBandId !== null && row.anchorBandName !== null
+      ? {
+          id: row.anchorBandId,
+          name: row.anchorBandName,
+          imageUrl: row.anchorBandImageUrl,
+        }
+      : null;
+
+  // `gig-for-band` carries its band id in `details.bandId` (no anchor column).
+  // Resolve it with a second lookup so the client can render the band summary
+  // without juggling two code paths.
+  if (band === null && row.details.kind === 'gig-for-band') {
+    const [b] = await db
+      .select({ id: bands.id, name: bands.name, imageUrl: bands.imageUrl })
+      .from(bands)
+      .where(eq(bands.id, row.details.bandId))
+      .limit(1);
+    band = b ?? null;
+  }
+
+  const gig =
+    row.anchorGigId !== null &&
+    row.anchorGigDatetime !== null &&
+    row.anchorGigVenueId !== null &&
+    row.anchorGigVenueName !== null
+      ? {
+          id: row.anchorGigId,
+          datetime: row.anchorGigDatetime,
+          venue: { id: row.anchorGigVenueId, name: row.anchorGigVenueName },
+        }
+      : null;
+
+  return {
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    slotCount: row.slotCount,
+    slotsFilled: row.slotsFilled,
+    details: row.details,
+    createdAt: row.createdAt,
+    band,
+    gig,
+  };
 }
 
 // --- listMine (MUS-55) ---------------------------------------------------
@@ -334,4 +433,231 @@ export async function listMyRequests(userId: number): Promise<ShapedRequestWithE
       eois: sortEoisForManage(matching),
     };
   });
+}
+
+// --- Matches (MUS-57) ----------------------------------------------------
+
+/**
+ * Shape returned by `listMatchesForUser`. One entry per (myRequest,
+ * counterpartRequest) pair that satisfies `matchesGigRequest`.
+ *
+ * Consumers (mobile) render this as a suggestion card; the pre-fill data
+ * for one-tap EoI creation is carried inside `counterpart` (specifically
+ * `gigId` for the promoter-side flow, or `bandId` + `targetDate` for the
+ * band-side flow).
+ */
+export interface ShapedMatch {
+  myRequest: {
+    id: number;
+    kind: 'band-for-gig-slot' | 'gig-for-band';
+  };
+  counterpart: {
+    id: number;
+    kind: 'band-for-gig-slot' | 'gig-for-band';
+    sourceUserId: number;
+    // Fields for `band-for-gig-slot` counterparts: the gig itself.
+    gigId: number | null;
+    gigDatetime: Date | null;
+    gigVenueName: string | null;
+    feeOffered: number | null;
+    // Fields for `gig-for-band` counterparts: the band + target date.
+    bandId: number | null;
+    bandName: string | null;
+    bandImageUrl: string | null;
+    targetDate: string | null;
+    area: string | null;
+    feeAsked: number | null;
+  };
+}
+
+/**
+ * Returns the set of matches between the caller's open requests and open
+ * counterpart requests owned by other users.
+ *
+ * Implemented as a candidate-fetch + filter: pull both sides' open rows,
+ * resolve enough data to run `matchesGigRequest` (gig date + venue city vs
+ * target date + area), then pair them up with the pure match rule. The
+ * discovery volume today is small enough that this is fine; if it becomes a
+ * hotspot we'd replace it with a SQL-side pre-filter + pagination.
+ */
+export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]> {
+  // Caller's open requests across the two counterpart kinds.
+  const myRows = await db
+    .select({
+      id: requests.id,
+      kind: requests.kind,
+      details: requests.details,
+      anchorGigId: requests.anchor_gig_id,
+    })
+    .from(requests)
+    .where(
+      and(
+        eq(requests.source_user_id, userId),
+        eq(requests.status, 'open'),
+        inArray(requests.kind, ['band-for-gig-slot', 'gig-for-band']),
+      ),
+    );
+
+  if (myRows.length === 0) return [];
+
+  // Counterpart candidates: every OTHER user's open band-for-gig-slot +
+  // gig-for-band, joined through gigs/venues/bands as needed so we have
+  // enough data to feed `matchesGigRequest`.
+  const candidateRows = await db
+    .select({
+      id: requests.id,
+      kind: requests.kind,
+      details: requests.details,
+      sourceUserId: requests.source_user_id,
+      anchorGigId: requests.anchor_gig_id,
+      gigDatetime: gigs.datetime,
+      gigVenueName: venues.name,
+      bandId: bands.id,
+      bandName: bands.name,
+      bandImageUrl: bands.imageUrl,
+    })
+    .from(requests)
+    .leftJoin(gigs, eq(gigs.id, requests.anchor_gig_id))
+    .leftJoin(venues, eq(venues.id, gigs.venue_id))
+    .leftJoin(bands, eq(bands.id, requests.anchor_band_id))
+    .where(
+      and(
+        eq(requests.status, 'open'),
+        ne(requests.source_user_id, userId),
+        inArray(requests.kind, ['band-for-gig-slot', 'gig-for-band']),
+      ),
+    );
+
+  // We also need the `bands` row for `gig-for-band` counterparts (band id
+  // lives inside `details`, not as an anchor). Fetch lazily in bulk.
+  const gigForBandBandIds = Array.from(
+    new Set(
+      candidateRows
+        .filter((r) => r.kind === 'gig-for-band' && r.details.kind === 'gig-for-band')
+        .map((r) => {
+          if (r.details.kind !== 'gig-for-band') return null;
+          return r.details.bandId;
+        })
+        .filter((id): id is number => id !== null),
+    ),
+  );
+  const extraBands = gigForBandBandIds.length
+    ? await db
+        .select({
+          id: bands.id,
+          name: bands.name,
+          imageUrl: bands.imageUrl,
+        })
+        .from(bands)
+        .where(inArray(bands.id, gigForBandBandIds))
+    : [];
+  const bandsById = new Map(extraBands.map((b) => [b.id, b]));
+
+  const matches: ShapedMatch[] = [];
+
+  for (const mine of myRows) {
+    if (mine.kind === 'band-for-gig-slot') {
+      if (mine.details.kind !== 'band-for-gig-slot') continue;
+      if (mine.anchorGigId === null) continue;
+      // Our side: the anchor gig's datetime. Need to look it up since `mine`
+      // doesn't join gigs.
+      const [myGig] = await db
+        .select({
+          datetime: gigs.datetime,
+          venueName: venues.name,
+        })
+        .from(gigs)
+        .innerJoin(venues, eq(venues.id, gigs.venue_id))
+        .where(eq(gigs.id, mine.anchorGigId))
+        .limit(1);
+      if (!myGig) continue;
+      const myFeeOffered = mine.details.feeOffered;
+
+      for (const other of candidateRows) {
+        if (other.kind !== 'gig-for-band') continue;
+        if (other.details.kind !== 'gig-for-band') continue;
+        const ok = matchesGigRequest(
+          {
+            gigDate: myGig.datetime.toISOString(),
+            gigVenueCity: myGig.venueName,
+            ...(myFeeOffered !== undefined ? { feeOffered: myFeeOffered } : {}),
+          },
+          {
+            targetDate: other.details.targetDate,
+            ...(other.details.area !== undefined ? { area: other.details.area } : {}),
+            ...(other.details.feeAsked !== undefined
+              ? { feeAsked: other.details.feeAsked }
+              : {}),
+          },
+        );
+        if (!ok) continue;
+        const band = bandsById.get(other.details.bandId) ?? null;
+        matches.push({
+          myRequest: { id: mine.id, kind: 'band-for-gig-slot' },
+          counterpart: {
+            id: other.id,
+            kind: 'gig-for-band',
+            sourceUserId: other.sourceUserId,
+            gigId: null,
+            gigDatetime: null,
+            gigVenueName: null,
+            feeOffered: null,
+            bandId: other.details.bandId,
+            bandName: band?.name ?? null,
+            bandImageUrl: band?.imageUrl ?? null,
+            targetDate: other.details.targetDate,
+            area: other.details.area ?? null,
+            feeAsked: other.details.feeAsked ?? null,
+          },
+        });
+      }
+    } else if (mine.kind === 'gig-for-band') {
+      if (mine.details.kind !== 'gig-for-band') continue;
+      const myTargetDate = mine.details.targetDate;
+      const myArea = mine.details.area;
+      const myFeeAsked = mine.details.feeAsked;
+
+      for (const other of candidateRows) {
+        if (other.kind !== 'band-for-gig-slot') continue;
+        if (other.details.kind !== 'band-for-gig-slot') continue;
+        if (other.gigDatetime === null) continue;
+        const otherFeeOffered = other.details.feeOffered;
+        const ok = matchesGigRequest(
+          {
+            gigDate: other.gigDatetime.toISOString(),
+            ...(other.gigVenueName !== null
+              ? { gigVenueCity: other.gigVenueName }
+              : {}),
+            ...(otherFeeOffered !== undefined ? { feeOffered: otherFeeOffered } : {}),
+          },
+          {
+            targetDate: myTargetDate,
+            ...(myArea !== undefined ? { area: myArea } : {}),
+            ...(myFeeAsked !== undefined ? { feeAsked: myFeeAsked } : {}),
+          },
+        );
+        if (!ok) continue;
+        matches.push({
+          myRequest: { id: mine.id, kind: 'gig-for-band' },
+          counterpart: {
+            id: other.id,
+            kind: 'band-for-gig-slot',
+            sourceUserId: other.sourceUserId,
+            gigId: other.anchorGigId,
+            gigDatetime: other.gigDatetime,
+            gigVenueName: other.gigVenueName,
+            feeOffered: other.details.feeOffered ?? null,
+            bandId: null,
+            bandName: null,
+            bandImageUrl: null,
+            targetDate: null,
+            area: null,
+            feeAsked: null,
+          },
+        });
+      }
+    }
+  }
+
+  return matches;
 }
