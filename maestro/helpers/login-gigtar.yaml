@@ -1,0 +1,18 @@
+appId: com.musicians.app
+---
+# Sign in as the gigtar fixture user. Re-used by flow 01 and flow 03.
+# Assumes the app is on the login screen (caller relaunches the app or has
+# just signed out via the drawer).
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "gigtar"
+- tapOn:
+    id: "login-password"
+- inputText: "password123"
+- tapOn:
+    id: "login-submit"
+# After login the home screen renders the welcome heading. UserContext
+# currently hardcodes firstName=null so the heading always renders the
+# username (lowercase) — see UserContext.tsx.
+- assertVisible: "Hello gigtar"

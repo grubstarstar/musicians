@@ -1,0 +1,16 @@
+appId: com.musicians.app
+---
+# Sign in as the sesh fixture user. Used by flow 02 and flow 04.
+# Assumes the app is on the login screen.
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "sesh"
+- tapOn:
+    id: "login-password"
+- inputText: "password123"
+- tapOn:
+    id: "login-submit"
+# UserContext currently hardcodes firstName=null, so the heading renders
+# the username instead.
+- assertVisible: "Hello sesh"

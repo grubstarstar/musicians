@@ -17,7 +17,11 @@
     "db:generate": "pnpm --filter @musicians/server db:generate",
     "db:migrate": "pnpm --filter @musicians/server db:migrate",
     "db:push": "pnpm --filter @musicians/server db:push",
-    "db:psql": "docker exec -it musicians-postgres psql -U postgres -d musicians"
+    "db:psql": "docker exec -it musicians-postgres psql -U postgres -d musicians",
+    "e2e:db-setup": "pnpm --filter @musicians/server e2e:db-setup",
+    "e2e:server": "pnpm --filter @musicians/server e2e:server",
+    "e2e:mobile": "NODE_ENV=test pnpm --filter @musicians/mobile e2e:start",
+    "e2e:run": "cd maestro && maestro test flows/request-to-join"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

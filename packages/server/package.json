@@ -12,6 +12,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "db:push": "drizzle-kit push",
+    "e2e:db-setup": "tsx src/dbSetupE2E.ts",
+    "e2e:server": "NODE_ENV=test PORT=3002 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/musicians_test tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

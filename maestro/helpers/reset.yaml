@@ -1,0 +1,8 @@
+appId: com.musicians.app
+---
+# Wipe the test DB and reseed the minimal fixture (gigtar, sesh, The Testers).
+# Runs as a runScript step (not a runFlow) because it's a pure HTTP call —
+# no UI assertions to make. The script asserts a 200 so the rest of the
+# journey stops loudly if the test server isn't running on 3002.
+- runScript:
+    file: reset.js

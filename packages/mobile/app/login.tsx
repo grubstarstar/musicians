@@ -61,6 +61,10 @@ export default function LoginScreen() {
           <View style={styles.form}>
             <Text style={styles.label}>Username</Text>
             <TextInput
+              // testID is required for the Maestro e2e flows (MUS-71). Visible
+              // text is unreliable for inputs where the placeholder doesn't
+              // match the value the user is typing.
+              testID="login-username"
               style={styles.input}
               value={username}
               onChangeText={setUsername}
@@ -77,6 +81,7 @@ export default function LoginScreen() {
             <Text style={styles.label}>Password</Text>
             <View style={styles.passwordRow}>
               <TextInput
+                testID="login-password"
                 style={[styles.input, styles.passwordInput]}
                 value={password}
                 onChangeText={setPassword}
@@ -115,6 +120,7 @@ export default function LoginScreen() {
             )}
 
             <Pressable
+              testID="login-submit"
               onPress={handleSubmit}
               disabled={!canSubmit}
               style={({ pressed }) => [

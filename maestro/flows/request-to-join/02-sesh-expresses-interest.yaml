@@ -1,0 +1,26 @@
+appId: com.musicians.app
+---
+# Flow 02 of the request-to-join e2e journey (MUS-71).
+# State at entry: gigtar is signed in (left over from flow 01).
+# - Log gigtar out via the drawer.
+# - Log in as sesh.
+# - Navigate to Notices, open The Testers' Bass request, and Express interest.
+- runFlow: ../../helpers/logout.yaml
+- runFlow: ../../helpers/login-sesh.yaml
+
+# Notices tab: shows every open request that isn't the caller's. The Testers
+# request gigtar posted is the only row.
+- tapOn: "Notices"
+- assertVisible: "Bands looking for musicians right now"
+- assertVisible: "The Testers"
+# Tap the row — `tapOn` on the band name targets the row Pressable since it
+# has accessibility text and is the inner heading.
+- tapOn: "The Testers"
+
+# Detail screen for the request. The instrument is rendered as the
+# `detailsHeading` ("Bass") and the `extraRows` include "Slots 0 / 1 filled".
+- assertVisible: "Bass"
+- assertVisible: "Looking for"
+# Submit: the instructions allow leaving the optional note empty.
+- tapOn: "Express interest"
+- assertVisible: "Interest sent"

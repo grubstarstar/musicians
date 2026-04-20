@@ -1,0 +1,6 @@
+# Maestro workspace config (MUS-71). Tests opt-in to the iOS simulator only
+# for this ticket; Android / device matrices are out of scope per the ticket.
+# Tags / executionOrder are intentionally omitted — we only ship a single
+# journey today and `maestro test flows/request-to-join` runs them in
+# alphabetical order, which is exactly what we want (01 → 04).
+appId: com.musicians.app

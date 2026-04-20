@@ -1,0 +1,28 @@
+appId: com.musicians.app
+---
+# Flow 03 of the request-to-join e2e journey (MUS-71).
+# State at entry: sesh is signed in (left over from flow 02).
+# - Log sesh out.
+# - Log in as gigtar.
+# - Navigate to My requests, expand the Bass request and Accept sesh's EoI.
+- runFlow: ../../helpers/logout.yaml
+- runFlow: ../../helpers/login-gigtar.yaml
+
+- tapOn: "My requests"
+- assertVisible: "Expressions of interest you've received"
+
+# RequestCard renders the band name as the header, with state pill = OPEN.
+# It expands by default (useState(true) in RequestCard) so the EoI row should
+# already be visible — no need to toggle. We assert sesh's name is there to
+# confirm the EoI rendered.
+- assertVisible: "The Testers"
+# Sesh's display name is rendered via formatUserDisplayName, which prefers
+# firstName when present — the seed sets firstName="Sesh".
+- assertVisible: "Sesh"
+
+# Accept the EoI. There's also a Reject button — `tapOn: "Accept"` matches
+# the Pressable with accessibilityLabel `Accept expression of interest from Sesh`.
+- tapOn: "Accept"
+
+# After acceptance, the EoI row's state pill renders ACCEPTED.
+- assertVisible: "Accepted"

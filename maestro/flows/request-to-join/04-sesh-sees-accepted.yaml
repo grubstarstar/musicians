@@ -1,0 +1,32 @@
+appId: com.musicians.app
+---
+# Flow 04 of the request-to-join e2e journey (MUS-71).
+# State at entry: gigtar is signed in (left over from flow 03).
+# - Log gigtar out.
+# - Log in as sesh.
+# - Open Applied tab; assert the row for "The Testers / Bass" shows "Accepted".
+# - Open Home tab; assert "The Testers" appears in the "Your bands" row.
+- runFlow: ../../helpers/logout.yaml
+- runFlow: ../../helpers/login-sesh.yaml
+
+# Applied tab: lists the EoIs sesh has sent. The row title is the band name
+# ("The Testers"), the subtitle is the instrument ("Bass"), and the state
+# pill is "Accepted" (formatEoiStateLabel).
+- tapOn: "Applied"
+- assertVisible: "The Testers"
+- assertVisible: "Bass"
+- assertVisible: "Accepted"
+
+# Home tab: MusicianHome's BandsRow renders a "Your bands" section listing
+# every band the user is a member of. After acceptance sesh is in The Testers,
+# so the band card should appear here.
+#
+# NOTE: the ticket calls out (out of scope, separate bug) that MusicianHome
+# may not refetch on focus — if this assertion flakes locally, force-quit
+# and relaunch the app between flows 03/04 (or scroll the home tab) until
+# the bug fix lands. This flow uses launchApp:clearState=false so the
+# QueryClient keeps any prior cache; pull-to-refresh isn't currently exposed
+# on Home.
+- tapOn: "Home"
+- assertVisible: "Your bands"
+- assertVisible: "The Testers"
