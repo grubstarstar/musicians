@@ -3,6 +3,7 @@ import type { AppRouter } from "@musicians/shared";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -15,16 +16,16 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { QueryBoundary } from "../../../src/components/QueryBoundary";
-import { queryClient, trpc } from "../../../src/trpc";
+import { QueryBoundary } from "../../../../src/components/QueryBoundary";
+import { queryClient, trpc } from "../../../../src/trpc";
 import {
   formatEoiStateLabel,
   formatRequestStatusLabel,
   formatUserDisplayName,
   getEoiStateColor,
   getRequestStatusColor,
-} from "../../../src/utils/eoiLabels";
-import { formatRelative } from "../../../src/utils/formatRelative";
+} from "../../../../src/utils/eoiLabels";
+import { formatRelative } from "../../../../src/utils/formatRelative";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type MyRequest = RouterOutputs["requests"]["listMine"][number];
@@ -33,24 +34,16 @@ type MyEoi = MyRequest["eois"][number];
 export default function MyRequestsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["left", "right", "top"]}>
-      <ScreenHeader />
+      <View style={styles.headerWrap}>
+        <Text style={styles.heading}>My requests</Text>
+        <Text style={styles.subheading}>
+          Expressions of interest you&apos;ve received
+        </Text>
+      </View>
       <QueryBoundary>
         <MyRequestsList />
       </QueryBoundary>
     </SafeAreaView>
-  );
-}
-
-function ScreenHeader() {
-  return (
-    <View style={styles.headerWrap}>
-      <View style={styles.headerText}>
-        <Text style={styles.heading}>My requests</Text>
-        <Text style={styles.subheading}>
-          Review expressions of interest on the requests you&apos;ve posted
-        </Text>
-      </View>
-    </View>
   );
 }
 
@@ -70,16 +63,6 @@ function MyRequestsList() {
 
   const now = new Date();
 
-  if (data.length === 0) {
-    return (
-      <View style={styles.emptyWrap}>
-        <Text style={styles.emptyText}>
-          You haven&apos;t posted any requests yet.
-        </Text>
-      </View>
-    );
-  }
-
   return (
     <FlatList
       data={data}
@@ -93,6 +76,13 @@ function MyRequestsList() {
           colors={["#6c63ff"]}
         />
       }
+      ListHeaderComponent={<NewRequestCard />}
+      ListHeaderComponentStyle={styles.newRequestHeader}
+      ListEmptyComponent={
+        <Text style={styles.emptyText}>
+          You haven&apos;t posted any requests yet.
+        </Text>
+      }
       ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
       renderItem={({ item }) => (
         <RequestCard
@@ -102,6 +92,23 @@ function MyRequestsList() {
         />
       )}
     />
+  );
+}
+
+function NewRequestCard() {
+  const router = useRouter();
+  return (
+    <Pressable
+      onPress={() => router.navigate("/my-requests/post-request")}
+      accessibilityRole="button"
+      accessibilityLabel="Post a new request"
+      style={({ pressed }) => [
+        styles.newRequestCard,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Ionicons name="add" size={28} color="#6c63ff" />
+    </Pressable>
   );
 }
 
@@ -305,7 +312,6 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 20,
   },
-  headerText: { flex: 1 },
   heading: { color: "#fff", fontSize: 28, fontWeight: "700" },
   subheading: { color: "#7a7a85", fontSize: 14, marginTop: 4 },
   listContent: { paddingHorizontal: 20, paddingBottom: 32 },
@@ -313,6 +319,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#1a1a1f",
     borderRadius: 12,
     overflow: "hidden",
+  },
+  newRequestHeader: { marginBottom: 12 },
+  newRequestCard: {
+    backgroundColor: "#1a1a1f",
+    borderRadius: 12,
+    minHeight: 72,
+    alignItems: "center",
+    justifyContent: "center",
   },
   cardHeader: {
     flexDirection: "row",
@@ -404,11 +418,10 @@ const styles = StyleSheet.create({
     padding: 12,
     fontStyle: "italic",
   },
-  emptyWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 40,
+  emptyText: {
+    color: "#7a7a85",
+    fontSize: 15,
+    textAlign: "center",
+    paddingVertical: 24,
   },
-  emptyText: { color: "#7a7a85", fontSize: 15, textAlign: "center" },
 });

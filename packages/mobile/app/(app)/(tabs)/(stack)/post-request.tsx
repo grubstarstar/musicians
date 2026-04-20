@@ -166,6 +166,10 @@ function PostRequestForm() {
         queryClient.invalidateQueries({
           queryKey: trpc.matches.listForUser.queryOptions().queryKey,
         });
+        // Refresh My requests so the new row appears on return.
+        queryClient.invalidateQueries({
+          queryKey: trpc.requests.listMine.queryOptions().queryKey,
+        });
       },
       onError: (err) => {
         setError(err.message);
