@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -127,7 +128,10 @@ function RequestDetailInner({ id }: { id: number }) {
   if (details.kind === "musician-for-band") {
     if (data.band === null) return <RequestNotFound />;
     const canSubmit = !submittedEoi && !closed && !submitting;
-    function handleSubmit() {
+    // Arrow form (not `function handleSubmit()`) — a block-scoped function
+    // declaration inside this `if` branch was being bound stale by Metro
+    // Fast Refresh, causing onPress to call a no-op reference.
+    const handleSubmit = () => {
       if (!canSubmit) return;
       if (details.kind !== "musician-for-band") return;
       const trimmed = notes.trim();
@@ -138,7 +142,7 @@ function RequestDetailInner({ id }: { id: number }) {
             ? { kind: "musician-for-band", notes: trimmed }
             : { kind: "musician-for-band" },
       });
-    }
+    };
     return (
       <DetailLayout
         router={router}
@@ -193,13 +197,13 @@ function RequestDetailInner({ id }: { id: number }) {
       !submitting &&
       selectedBandId !== null &&
       candidateBands.length > 0;
-    function handleSubmit() {
+    const handleSubmit = () => {
       if (!canSubmit || selectedBandId === null) return;
       createEoi.mutate({
         requestId: id,
         details: { kind: "band-for-gig-slot", bandId: selectedBandId },
       });
-    }
+    };
     const heading = data.gig
       ? `Gig slot at ${data.gig.venue.name}`
       : "Band for gig slot";
@@ -289,13 +293,13 @@ function RequestDetailInner({ id }: { id: number }) {
       !submitting &&
       selectedGigId !== null &&
       candidateGigs.length > 0;
-    function handleSubmit() {
+    const handleSubmit = () => {
       if (!canSubmit || selectedGigId === null) return;
       createEoi.mutate({
         requestId: id,
         details: { kind: "gig-for-band", gigId: selectedGigId },
       });
-    }
+    };
     const bandName = data.band?.name ?? "Band";
     return (
       <DetailLayout
@@ -379,7 +383,7 @@ function RequestDetailInner({ id }: { id: number }) {
       !submitting &&
       selectedVenueId !== null &&
       pickedDate !== null;
-    function handleSubmit() {
+    const handleSubmit = () => {
       if (!canSubmit || selectedVenueId === null || pickedDate === null) return;
       if (details.kind !== "night-at-venue") return;
       createEoi.mutate({
@@ -390,7 +394,7 @@ function RequestDetailInner({ id }: { id: number }) {
           proposedDate: pickedDate,
         },
       });
-    }
+    };
     return (
       <DetailLayout
         router={router}
@@ -481,7 +485,7 @@ function RequestDetailInner({ id }: { id: number }) {
   // --- promoter-for-venue-night: caller is a promoter --------------------
   if (details.kind === "promoter-for-venue-night") {
     const canSubmit = !submittedEoi && !closed && !submitting;
-    function handleSubmit() {
+    const handleSubmit = () => {
       if (!canSubmit) return;
       const concept = conceptOverride.trim();
       createEoi.mutate({
@@ -491,7 +495,7 @@ function RequestDetailInner({ id }: { id: number }) {
           ...(concept.length > 0 ? { concept } : {}),
         },
       });
-    }
+    };
     // Resolve venue name from the venues list.
     const venue = allVenues.find((v) => v.id === details.venueId) ?? null;
     const heading = venue
@@ -546,13 +550,13 @@ function RequestDetailInner({ id }: { id: number }) {
       !submitting &&
       selectedBandId !== null &&
       candidateBands.length > 0;
-    function handleSubmit() {
+    const handleSubmit = () => {
       if (!canSubmit || selectedBandId === null) return;
       createEoi.mutate({
         requestId: id,
         details: { kind: "band-for-musician", bandId: selectedBandId },
       });
-    }
+    };
     return (
       <DetailLayout
         router={router}
@@ -727,14 +731,11 @@ function SubmitBlock(props: {
         </Text>
       )}
 
-      <Pressable
+      <TouchableOpacity
         onPress={props.onSubmit}
         disabled={!props.canSubmit}
-        style={({ pressed }) => [
-          styles.button,
-          !props.canSubmit && styles.buttonDisabled,
-          pressed && props.canSubmit && styles.buttonPressed,
-        ]}
+        activeOpacity={0.85}
+        style={[styles.button, !props.canSubmit && styles.buttonDisabled]}
         accessibilityRole="button"
         accessibilityState={{ disabled: !props.canSubmit, busy: props.submitting }}
       >
@@ -745,7 +746,7 @@ function SubmitBlock(props: {
             {props.submittedEoi ? "Interest sent" : "Express interest"}
           </Text>
         )}
-      </Pressable>
+      </TouchableOpacity>
     </>
   );
 }
