@@ -96,7 +96,10 @@ Prefer selectors that describe what the user sees. In priority order:
 3. Read any referenced existing flows under `maestro/flows/<journey>/` to understand the journey's current shape.
 4. Write or extend the flow per the decision tree above. Use dev's HANDOFF testIDs where selectors need a stable anchor; prefer visible text otherwise.
 5. **Do not run the flow.** Running Maestro is a separate pipeline step (the future qa-test agent — needs the headless sim from MUS-72). Your job ends at "flow exists and parses as YAML".
-6. Commit on your agent branch with a `MUS-XX: ...` message body. Follow the commit discipline documented in `.claude/agents/dev.md` (explicit `git add <files>`, verify with `git log -3`, don't assume gitignore).
+6. Commit on **your worktree branch** with a `MUS-XX: ...` message. Follow the full commit discipline in `.claude/agents/dev.md` — in particular:
+   - **Every git command runs from inside your worktree path** (`.claude/worktrees/agent-<your-id>`), never from the repo root. A `cd` to the repo root followed by `git commit` in the same shell session lands the commit on **main** — which has happened on MUS-70. Pass absolute paths to Read/Grep/Glob instead of leaving the worktree.
+   - **Verify the branch before committing:** `git rev-parse --abbrev-ref HEAD` must print `worktree-agent-<your-id>`. If it prints `main`, stop and `cd` back into the worktree.
+   - **Verify the commit landed on your branch** with `git log --oneline -3 --decorate` — the top commit must show `(HEAD -> worktree-agent-<your-id>)`. If it shows `main`, the commit went to the wrong place and the orchestrator has to untangle it.
 7. Post a Jira completion comment via `mcp__mcp-atlassian__jira_add_comment` on the ticket. Include:
    - The flow file path you wrote / extended.
    - A one-paragraph summary of the scenario your flow drives.

@@ -92,12 +92,14 @@ After implementing any complex pure functions, write unit tests for them. Follow
 
 **Your worktree is destroyed when you finish.** Anything not committed disappears. Do this before signalling completion or transitioning the ticket:
 
-1. **Never assume a path is gitignored without checking.** Run `git check-ignore -v <path>` (exits 0 = ignored, prints the rule). Don't infer from intuition — `.claude/skills/`, `.claude/agents/`, etc. are tracked in this repo even though they look like config.
-2. **Stage and commit explicitly.** `git add <specific files>` then `git commit -m "MUS-XX: <summary>"`. Never `git add -A`.
-3. **Verify the commit landed** with `git log --oneline -3 -- <path>` — your commit must appear on top. If it doesn't, the commit didn't happen — investigate before signalling completion.
-4. **If you genuinely cannot commit something** (truly gitignored, generated artefact), say so explicitly in your final report so the orchestrator can copy it out before worktree teardown.
+1. **Always run git commands from inside your worktree path**, not from the repo root. The orchestrator spawns you with `isolation: "worktree"`, which means the harness creates `.claude/worktrees/agent-<id>/` with a dedicated `worktree-agent-<id>` branch checked out. If you `cd` to the repo root (`/Users/richardgarner/git/musicians`) to read files there and then run `git commit` in that same shell session, the commit lands on **main** instead of your worktree branch — and main's HEAD now silently carries unreviewed work. If you must briefly `cd` out of the worktree, `cd` back before any git write. Pass absolute paths to Read/Grep/Glob instead of changing cwd.
+2. **Branch sanity check before every commit.** Run `git rev-parse --abbrev-ref HEAD` — it MUST print `worktree-agent-<your-id>`. If it prints `main`, stop, `cd` into `.claude/worktrees/agent-<your-id>`, and re-check before committing. This has caught a real incident where a subagent committed directly to main.
+3. **Never assume a path is gitignored without checking.** Run `git check-ignore -v <path>` (exits 0 = ignored, prints the rule). Don't infer from intuition — `.claude/skills/`, `.claude/agents/`, etc. are tracked in this repo even though they look like config.
+4. **Stage and commit explicitly.** `git add <specific files>` then `git commit -m "MUS-XX: <summary>"`. Never `git add -A`.
+5. **Verify the commit landed on your worktree branch** with `git log --oneline -3 --decorate` — your commit must appear on top AND the `(HEAD -> worktree-agent-<id>)` decoration must be present. `git log --oneline -3 -- <path>` for the file-scoped view works too. If either check shows main or another branch, the commit went to the wrong place — investigate before signalling completion.
+6. **If you genuinely cannot commit something** (truly gitignored, generated artefact), say so explicitly in your final report so the orchestrator can copy it out before worktree teardown.
 
-If you signal completion without verifying the commit, the harness cleans the worktree and your work is lost — which has happened before. This step is the difference between work shipped and work redone.
+If you signal completion without verifying the commit, the harness cleans the worktree and your work is lost — or worse, lands on main unreviewed. This step is the difference between work shipped and work redone.
 
 ## E2E tests
 
