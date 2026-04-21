@@ -56,6 +56,19 @@ function BandScreenInner({ id }: { id: number }) {
         <Text style={[styles.heroName, { color: textColor }]}>{data.name}</Text>
       </View>
 
+      {/* MUS-70: in-context entry point — seeds the post-request form with
+          this band pre-selected as a `musician-for-band` request. Placed
+          alongside the Members section since "find a new musician" is its
+          natural companion. The ticket calls for a single CTA on the band
+          page, not per-instrument. */}
+      <PostRequestCta
+        onPress={() =>
+          router.navigate(
+            `/post-request?kind=musician-for-band&bandId=${id}`,
+          )
+        }
+      />
+
       {data.members.length > 0 && (
         <CollapsibleSection
           title="Members"
@@ -88,6 +101,33 @@ function BandScreenInner({ id }: { id: number }) {
         </QueryBoundary>
       </CollapsibleSection>
     </ScrollView>
+  );
+}
+
+/**
+ * MUS-70 in-context post-request entry point for the band page.
+ *
+ * Rendered as a compact `+ Find a musician` row so it reads as an action
+ * affordance rather than navigation; `testID` is stable (`post-request-cta-band`)
+ * so the qa-automate flow can target it without relying on visible text.
+ */
+function PostRequestCta({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      testID="post-request-cta-band"
+      accessibilityRole="button"
+      accessibilityLabel="Find a musician for this band"
+      style={({ pressed }) => [
+        styles.postRequestCta,
+        pressed && styles.postRequestCtaPressed,
+      ]}
+    >
+      <View style={styles.postRequestIcon}>
+        <Ionicons name="add" size={20} color="#fff" />
+      </View>
+      <Text style={styles.postRequestLabel}>Find a musician</Text>
+    </Pressable>
   );
 }
 
@@ -187,4 +227,25 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   rehearsalBadgeText: { color: "#a0a0b0", fontSize: 11, fontWeight: "600" },
+  postRequestCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#6c63ff",
+    borderRadius: 10,
+  },
+  postRequestCtaPressed: { opacity: 0.85 },
+  postRequestIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+  },
+  postRequestLabel: { color: "#fff", fontSize: 15, fontWeight: "600" },
 });
