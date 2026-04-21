@@ -88,6 +88,15 @@ After implementing any complex pure functions, write unit tests for them. Follow
 - Run `pnpm test` and confirm all tests pass before transitioning the ticket
 - Commit the code to the git repo with the appropriate message.
 
+## E2E tests
+
+Every user-facing change must be covered by a passing Maestro end-to-end flow before the ticket moves to Code Review.
+
+- **Existing flow covers it?** Run only that flow file (e.g. `maestro test maestro/flows/request-to-join/02-sesh-expresses-interest.yaml`) and confirm it still exits 0 with your changes.
+- **No existing coverage?** Add a new flow (or extend an existing one in the same journey) that drives the new code path through the UI. Pick the closest journey under `maestro/flows/**`; only create a new flow file if nothing fits.
+- Run **only the specific flow(s) your change affects**. Do not run the full E2E suite — full-suite runs are a separate manual step configured later.
+- If the Maestro framework is not yet scaffolded in this repo (pre-MUS-71), skip this section and add a comment on the Jira ticket: "E2E coverage pending — framework not yet in place (MUS-71)."
+
 ## Jira transitions
 
 When your implementation is complete and tests pass:

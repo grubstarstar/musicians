@@ -24,6 +24,13 @@
 - No custom CSS files except `packages/web/src/index.css` for global resets only
 - No other component libraries
 
+## Mobile data fetching
+- New tRPC-backed mobile screens use `useSuspenseQuery` inside a `<QueryBoundary>` wrapper (`packages/mobile/src/components/QueryBoundary.tsx`). Do NOT use `useQuery` with `if (isLoading) ... / if (!data) ... / if (error) ...` guards in new code.
+- Wrap the screen's inner component in `<QueryBoundary notFoundFallback={<ScreenSpecificNotFound />}>` (omit prop if "not found" isn't a meaningful state).
+- Inside: `const { data } = useSuspenseQuery(trpc.xxx.queryOptions(...))` — `data` is non-nullable, no guards needed.
+- Invalid-input short-circuits (like `Number.isNaN(id)`) stay outside the boundary since the query never fires.
+- `QueryBoundary` already routes `TRPCClientError` with `code === 'NOT_FOUND'` to `notFoundFallback`; other errors get the default retry UI.
+
 ## ORM: Drizzle
 - Schema defined in `packages/server/src/schema.ts` using Drizzle `pg-core` table definitions
 - DB instance and schema exported from `packages/server/src/db.ts`
@@ -89,17 +96,34 @@ Work is tracked in Jira. Use the `mcp__mcp-atlassian__*` MCP tools for all Jira 
 
 Kanban flow:
 ```
-To Do → Doing → Code Review → Done
-                     ↑          |
-                     └──────────┘  (changes requested → back to Doing)
+To Do → Ready for Development → Doing → Code Review → Done
+                                            ↑           |
+                                            └───────────┘  (changes requested → back to Doing)
 ```
+- `To Do` is the raw backlog.
+- `Ready for Development` is the curated shortlist of next-up work — `/next-tickets` pulls from here by default, falling back to `To Do` only if it's empty.
 
-Available skills:
-- `/next-ticket` — picks the next To Do card and works it end-to-end
-- `/dev` — implements a feature (includes unit tests for pure functions)
-- `/code-review` — reviews code changes
-- `/smoke-test` — tests all features working together end-to-end
-- `/unit-test` — writes tests for complex pure functions
+When filing tickets via `mcp__mcp-atlassian__*`: the markdown→ADF converter mangles fenced code blocks nested inside list items (underscores become italic, escapes leak). Always hoist code/YAML blocks out of lists, and wrap inline identifiers in backticks rather than relying on `*emphasis*`.
+
+Available skills (project-scoped in `.claude/skills/`):
+- `/next-tickets` — picks one or more tickets from Ready for Development and runs the full dev → code-review pipeline (parallel where dependencies allow)
+
+Available global skills you may also invoke from chat:
+- `/dev`, `/code-review`, `/smoke-test`, `/unit-test`, `/qa`, `/write-a-prd`
+
+## Agent pipeline conventions
+- Spawn `dev` and `code-review` subagents via the `Agent` tool with `subagent_type: "dev"` / `"code-review"`. Both belong to this project at `.claude/agents/`.
+- For `dev`: always pass `isolation: "worktree"` (the harness manages the worktree — never pre-create one yourself, see Gotchas) and `run_in_background: true` (frees the orchestrator).
+- For `code-review`: `run_in_background: true`; no `isolation: "worktree"` needed (read-only).
+- When pulling a non-trivial ticket (schema changes, new domain concepts, modelling ambiguity), draft any clarifying corrections in chat first, get user OK, then `jira_update_issue`, then spawn dev. Avoids mid-pipeline rewriting.
+
+## MCP servers
+- Project-scoped MCP servers (e.g. ios-simulator, mcp-atlassian for this repo) live in `<repo>/.mcp.json`.
+- Cross-project tools (Notion, Gmail, etc.) live in the user's global `~/.claude.json`.
+- Before adding an MCP server: ask whether it's useful in every project. If only this one, put it in the repo so it travels with the codebase.
+
+## Product target
+- Subscription pricing target: ~A$10/month. Default to AUD when discussing pricing in tickets/plans.
 
 ## Gotchas (session-tested)
 
