@@ -93,7 +93,9 @@ Both agents have now produced their own branches (dev's branch, and — if the t
 ```bash
 cd /Users/richardgarner/git/musicians
 git checkout main
-git checkout -b mus-NN-feature        # lowercase ticket ID, e.g. mus-72-feature
+# Branch name: feature/MUS-NN-short-description (uppercase ticket ID,
+# kebab-case slug from the ticket summary — e.g. feature/MUS-72-headless-e2e).
+git checkout -b feature/MUS-NN-short-description
 git merge --no-ff <dev-branch>
 git merge --no-ff <qa-automate-branch>   # skip this line if no-e2e
 ```
@@ -109,7 +111,7 @@ Spawn a **code-review** subagent. Use the `Agent` tool with these settings:
 - `subagent_type: "code-review"` — resolves to `.claude/agents/code-review.md`
 - `run_in_background: true` — same reason as Dev: don't block the orchestrator.
 - **No `isolation: "worktree"`** — code-review reads only, never writes.
-- `prompt:` — point it at the **feature branch** (`mus-NN-feature`) at the repo root, with diff base `main`. The review sees dev + qa-automate as one unified diff.
+- `prompt:` — point it at the **feature branch** (`feature/MUS-NN-short-description`) at the repo root, with diff base `main`. The review sees dev + qa-automate as one unified diff.
 - `description:` — short ("MUS-XX code review").
 
 Outcomes:
@@ -141,23 +143,23 @@ When the ticket reaches **Done**:
    ```bash
    cd /Users/richardgarner/git/musicians
    git checkout main
-   git merge --ff-only mus-NN-feature
+   git merge --ff-only feature/MUS-NN-short-description
    ```
    Verify with `git log --oneline -5` — the top commits should be the feature-branch merges (dev's merge commit, and qa-automate's if present). If it says "Already up to date" but the feature branch isn't on main, you ran the merge from the wrong cwd; redo from the repo root.
 
    If main has moved on since the feature branch was created, rebase the feature branch first:
    ```bash
    cd /Users/richardgarner/git/musicians
-   git checkout mus-NN-feature
+   git checkout feature/MUS-NN-short-description
    git rebase main
    git checkout main
-   git merge --ff-only mus-NN-feature
+   git merge --ff-only feature/MUS-NN-short-description
    ```
 
 2. **Remove the feature branch, both agent branches, and both worktrees** (also from the repo root):
    ```bash
    cd /Users/richardgarner/git/musicians
-   git branch -d mus-NN-feature
+   git branch -d feature/MUS-NN-short-description
    git worktree remove -f -f .claude/worktrees/<dev-agent-id>
    git branch -D <dev-agent-branch>
    git worktree remove -f -f .claude/worktrees/<qa-automate-agent-id>   # skip if no-e2e
@@ -179,7 +181,7 @@ Execution:
   t=0   MUS-2 dev starts (parallel)
   t=1   MUS-1 dev done → MUS-1 qa-automate starts
   t=1   MUS-2 dev done → (no-e2e, skip qa-automate) → combine → code review
-  t=2   MUS-1 qa-automate done → combine (mus-1-feature) → code review
+  t=2   MUS-1 qa-automate done → combine (feature/MUS-1-short-description) → code review
   t=2   MUS-2 review approved → QA (no-e2e, auto) → Done → ff-merge + cleanup
   t=3   MUS-1 review approved → QA (user runs pnpm e2e:run, reports green)
         → Done → ff-merge + cleanup
