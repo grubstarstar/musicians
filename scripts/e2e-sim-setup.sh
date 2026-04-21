@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# e2e-sim-setup.sh (MUS-72) — idempotent headless simulator setup for Maestro.
+# e2e-sim-setup.sh (MUS-72) — idempotent sandboxed simulator setup for Maestro.
 #
-# Creates (or reuses) a dedicated iOS simulator named "MaestroTest", boots it
-# without opening Simulator.app, installs the cached dev-client .app, seeds
-# the Expo dev-launcher preferences so it auto-connects to the local Metro
-# bundler on launch, and launches the app. The Maestro flow then arrives at
-# the app's login screen without ever seeing the dev-launcher picker.
+# Creates (or reuses) a dedicated iOS simulator named "MaestroTest", boots it,
+# attaches Simulator.app to that UDID (see the XCUIApplication note below),
+# installs the cached dev-client .app, seeds the Expo dev-launcher preferences
+# so it auto-connects to the local Metro bundler on launch, and launches the
+# app. The Maestro flow then arrives at the app's login screen without ever
+# seeing the dev-launcher picker.
 #
 # How the dev-launcher bypass works:
 # - Expo dev-client persists recently-opened Metro URLs in NSUserDefaults
@@ -123,7 +124,7 @@ else
   log "         Run \`pnpm e2e:build-app\` once to cache it."
 fi
 
-# 4. Seed dev-launcher defaults so the app auto-connects to Metro on launch
+# 5. Seed dev-launcher defaults so the app auto-connects to Metro on launch
 #    and skips the native "DEVELOPMENT SERVERS" picker. Safe to re-run — each
 #    `defaults write` overwrites idempotently. Terminate the app first so the
 #    writes land in the live defaults domain rather than a process that then
@@ -155,7 +156,7 @@ if xcrun simctl get_app_container "$udid" "$APP_BUNDLE_ID" >/dev/null 2>&1; then
     "<dict><key>isEASUpdate</key><false/><key>name</key><string>Musicians</string><key>timestamp</key><real>$timestamp_ms</real><key>url</key><string>$METRO_URL</string></dict>"
 fi
 
-# 5. Launch the app. With defaults seeded above the dev-client skips the
+# 6. Launch the app. With defaults seeded above the dev-client skips the
 #    picker, connects to Metro, and the Maestro flow lands on the login screen.
 if xcrun simctl get_app_container "$udid" "$APP_BUNDLE_ID" >/dev/null 2>&1; then
   log "Launching $APP_BUNDLE_ID..."

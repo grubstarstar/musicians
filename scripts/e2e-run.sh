@@ -61,8 +61,9 @@ set +e
 # order (01-*, 02-*, ...). Pointing `maestro test` at the directory itself
 # iterates in file mtime order instead, which breaks any journey where step
 # ordering matters — e.g. request-to-join's "flow 01 posts, flow 02 EOIs
-# against that post". `-c` makes Maestro stop at the first failure and skip
-# the rest, mirroring the single-directory-arg behaviour.
+# against that post". Maestro still runs every file we pass even if an
+# earlier one fails; each flow asserts its own state at entry so a
+# mid-journey failure produces useful follow-on signal rather than stopping.
 if [ -d "$flow_path" ]; then
   flows=("$flow_path"/[0-9]*-*.yaml)
   if [ ! -e "${flows[0]}" ]; then

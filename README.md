@@ -90,12 +90,18 @@ pnpm e2e:run
 
 - reuses an existing simulator named `MaestroTest` or creates one
   (default `iPhone 16 Pro`, latest installed iOS runtime);
-- boots it headlessly (no Simulator.app window);
-- installs `build/MusiciansDev.app`;
-- launches the app and deep-links it at `http://localhost:8082` so the
-  dev-client skips its launcher screen;
+- boots it and attaches Simulator.app to that UDID — a Simulator window
+  does appear for the dedicated `MaestroTest` sim, but it stays separate
+  from any daily-driver sim window you already have open (Maestro's
+  `launchApp` uses `XCUIApplication` which only reliably foregrounds
+  apps when the Simulator GUI is running);
+- uninstalls and `keychain reset`s any prior copy of the app, then
+  reinstalls `build/MusiciansDev.app` — so every run starts logged out;
+- seeds the Expo dev-launcher's saved-servers `NSUserDefaults` so the
+  app auto-connects to Metro at `http://localhost:8082` and skips the
+  native `DEVELOPMENT SERVERS` picker;
 - then runs every flow under `maestro/flows/request-to-join/` in
-  alphabetical order (01 → 04) against that sim's UDID.
+  filename-sorted order (01 → 04) against that sim's UDID.
 
 Running it twice in a row should both pass — flow 01 hits `POST /test/reset`
 which truncates and reseeds the test DB.
