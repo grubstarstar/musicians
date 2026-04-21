@@ -3,7 +3,7 @@ name: next-tickets
 description: Pick one or more tickets from the Jira backlog and work them end-to-end. Accepts ticket IDs as arguments (e.g. /next-tickets MUS-1 MUS-2). If no IDs are given, picks the top ticket from Ready for Development (falling back to To Do if that column is empty). Multiple IDs are run in parallel where dependencies allow.
 ---
 
-You are the orchestrator for one or more tickets through the full dev → code review pipeline.
+You are the orchestrator for one or more tickets through the full dev → qa-automate → code review → QA pipeline.
 
 ## Jira
 
@@ -11,10 +11,10 @@ Use `mcp__mcp-atlassian__*` tools for all Jira interactions. Never hit the Jira 
 
 - Instance: richard-garner.atlassian.net
 - Project: MUS (Musician App)
-- Statuses: **To Do → Ready for Development → Doing → Code Review → Done**
+- Statuses: **To Do → Ready for Development → Doing → Code Review → QA → Done**
 - `Ready for Development` is the curated shortlist of next-up work. `To Do` is the raw backlog.
 
-Transition a ticket by calling `jira_get_transitions` first to get the correct transition ID for the target status, then call `jira_transition_issue`.
+Transition a ticket by calling `jira_get_transitions` first to get the correct transition ID for the target status, then call `jira_transition_issue`. Common transition IDs on MUS: `21` In Progress, `2` Review (Code Review), `4` QA, `31` Done, `11` To Do.
 
 ## Arguments
 
@@ -24,7 +24,7 @@ Parse the ticket IDs from the arguments (e.g. `MUS-1 MUS-2`). If no arguments we
 
 For each ticket:
 
-1. Call `jira_get_issue` to get the full description and acceptance criteria
+1. Call `jira_get_issue` to get the full description, acceptance criteria, and **labels** (the `no-e2e` label gates the qa-automate and QA steps below)
 2. Check issue links for **blocks / is blocked by** relationships
 3. Build a dependency graph: which tickets must reach **Done** before others can start?
 
@@ -45,13 +45,14 @@ Don't ask "should I correct this?" as a binary — propose the correction so the
 
 ## Step 2 — Run the pipeline
 
-For each ticket, run: **dev → code review** in sequence. Tickets with no unmet dependencies start immediately; blocked tickets wait.
+For each ticket, run: **dev → qa-automate → combine → code review → QA → merge** in sequence. Tickets with no unmet dependencies start immediately; blocked tickets wait.
 
 ### Parallelism rules
 
 - If multiple tickets are unblocked, spawn their **dev** agents in a **single message with multiple `Agent` tool calls** — that's what triggers concurrent execution. Sequential calls run sequentially.
 - Do NOT start a ticket's dev work until all tickets it depends on have reached **Done** status.
 - Check Jira for the blocking ticket's status before proceeding.
+- QA runs are **serial across tickets** — the simulator is a shared resource. Do not attempt to run `pnpm e2e:run` for two tickets concurrently.
 
 ### Per-ticket pipeline
 
@@ -65,71 +66,123 @@ Spawn a **dev** subagent. Use the `Agent` tool with these settings (all are load
 - `prompt:` — full briefing: ticket ID, full description, acceptance criteria, any dependency context, project conventions reminder.
 - `description:` — short ("MUS-XX dev").
 
-The dev agent implements the feature and transitions the Jira ticket to **Code Review** when done. If the dev agent reports failure, transition the ticket back to **To Do** and stop that ticket's pipeline.
+The dev agent implements the feature and transitions the Jira ticket to **Code Review** when done. Dev's completion comment on the Jira ticket must include a `## HANDOFF` block (`new_testids`, `modified_screens`, `notes_for_e2e`) — the qa-automate step below reads this from Jira.
 
-#### 2b. Code Review
+If the dev agent reports failure, transition the ticket back to **To Do** and stop that ticket's pipeline.
 
-After the dev agent completes, spawn a **code-review** subagent. Use the `Agent` tool with these settings:
+#### 2b. QA Automate (skipped if `no-e2e`)
+
+**Skip this sub-step entirely if the ticket has the `no-e2e` label.** In that case the feature branch contains only dev's commits and you move straight to the combine step.
+
+Otherwise, spawn a **qa-automate** subagent. Use the `Agent` tool with these settings:
+
+- `subagent_type: "qa-automate"` — resolves to `.claude/agents/qa-automate.md`
+- `isolation: "worktree"` — qa-automate writes its flow file on its own agent branch from `main`.
+- `run_in_background: true` — same reason as Dev.
+- `prompt:` — ticket ID only. The agent fetches the Jira description + AC + dev's `## HANDOFF` block itself via `mcp__mcp-atlassian__jira_get_issue`. **Do NOT** pass it dev's diff, dev's worktree path, or any source files dev modified — qa-automate is deliberately blind to dev's implementation (see the "blind to dev's diff" rule in `.claude/agents/qa-automate.md`). Tests written against the spec stay honest; tests written against the code just bless whatever dev produced.
+- `description:` — short ("MUS-XX qa-automate").
+
+qa-automate produces one commit on its own agent branch that adds or extends exactly one flow file under `maestro/flows/<journey>/`. It does **not** transition Jira — the orchestrator handles that after combining.
+
+#### 2c. Combine onto feature branch
+
+Both agents have now produced their own branches (dev's branch, and — if the ticket isn't `no-e2e` — qa-automate's branch). Combine them onto a single per-ticket feature branch:
+
+**Critical:** run these commands from the repo root (`/Users/richardgarner/git/musicians`). Never from inside a worktree.
+
+```bash
+cd /Users/richardgarner/git/musicians
+git checkout main
+git checkout -b mus-NN-feature        # lowercase ticket ID, e.g. mus-72-feature
+git merge --no-ff <dev-branch>
+git merge --no-ff <qa-automate-branch>   # skip this line if no-e2e
+```
+
+The `--no-ff` keeps each agent's commits grouped under a merge commit, so the feature-branch history shows "dev landed" and "qa-automate landed" as distinct points.
+
+**If a merge conflict appears** (rare — only when dev and qa-automate touch the same file), **stop and surface to the user**. Report the conflicting file(s) and the conflict markers inline. Do not attempt to auto-resolve. The user will either resolve by hand or re-spawn one of the agents with tighter scoping.
+
+#### 2d. Code Review (against the feature branch)
+
+Spawn a **code-review** subagent. Use the `Agent` tool with these settings:
 
 - `subagent_type: "code-review"` — resolves to `.claude/agents/code-review.md`
 - `run_in_background: true` — same reason as Dev: don't block the orchestrator.
-- **No `isolation: "worktree"`** — code-review reads only, never writes. It runs against the dev agent's existing worktree path (you'll have it from the dev agent's completion notification).
-- `prompt:` — point it at the worktree path, the diff base (`main`), and the ticket's acceptance criteria.
+- **No `isolation: "worktree"`** — code-review reads only, never writes.
+- `prompt:` — point it at the **feature branch** (`mus-NN-feature`) at the repo root, with diff base `main`. The review sees dev + qa-automate as one unified diff.
 - `description:` — short ("MUS-XX code review").
 
 Outcomes:
 
-- **Approves** → transitions the ticket to **Done**
-- **Requests changes** → transitions the ticket back to **Doing**; re-spawn the dev agent (with `isolation: "worktree"` again) to fix issues, then loop back to code review
+- **Approves** → transition the ticket to **QA** (transition id `4`). Continue to step 2e.
+- **Requests changes** → transition the ticket back to **Doing** (transition id `21`); re-spawn dev (and/or qa-automate if flow issues were raised) on their original branches to address the feedback, then re-run combine + code review. Keep the feature branch — delete it and recreate if dev's branch was reset, otherwise fast-forward the additional fix commits onto it.
 
 Maximum 3 review cycles before escalating to the user.
 
+#### 2e. QA gate
+
+The ticket is now in **QA** status on the feature branch.
+
+- **Ticket has `no-e2e` label**: skip the manual QA run. Transition straight to **Done** (transition id `31`) and proceed to Step 3 (merge).
+- **Ticket does not have `no-e2e`**: prompt the user inline to run `pnpm e2e:run` on the feature branch and report the result. Until the future `qa-test` agent lands, this step is manual.
+  - **Green** → transition the ticket to **Done** (transition id `31`) and proceed to Step 3.
+  - **Red** → transition the ticket back to **Doing** (transition id `21`) with the failure summary as a Jira comment. Decide which agent to re-spawn:
+    - Flow bug (selector, wrong assertion, test-only issue) → re-spawn `qa-automate` on its branch.
+    - App bug (feature doesn't do what the AC said) → re-spawn `dev` on its branch.
+    - Both → re-spawn both, then re-combine + re-review + re-QA.
+
 ## Step 3 — Merge and cleanup
 
-When a ticket reaches **Done**:
+When the ticket reaches **Done**:
 
 **Critical:** every git command in this section MUST run from the repo root (`/Users/richardgarner/git/musicians`). The harness's previous cwd may still point inside an agent's worktree directory; running `git merge --ff-only <branch>` from inside that worktree merges the branch into itself (no-op on main) and silently leaves main behind. Always start with `cd /Users/richardgarner/git/musicians` — single command, no chaining — before the steps below.
 
-1. **(Optional) Squash the agent's branch into one ticket commit.** Skip this if the agent already produced a single clean commit with a `MUS-XX: ...` message. Only squash if there's WIP/follow-up noise:
-   ```bash
-   cd <agent-worktree-path>
-   git reset --soft main
-   git commit -m "MUS-XX: <ticket title>" -m "<body>"
-   ```
-2. **Back to repo root, then fast-forward merge into main** (keeps history linear):
+1. **Fast-forward merge the feature branch into main** (keeps history linear):
    ```bash
    cd /Users/richardgarner/git/musicians
-   git merge --ff-only <agent-branch>
+   git checkout main
+   git merge --ff-only mus-NN-feature
    ```
-   Verify with `git log --oneline -1` — top should be the agent's commit. If it says "Already up to date" but the commit isn't on main, you ran the merge from the wrong cwd; redo from the repo root.
+   Verify with `git log --oneline -5` — the top commits should be the feature-branch merges (dev's merge commit, and qa-automate's if present). If it says "Already up to date" but the feature branch isn't on main, you ran the merge from the wrong cwd; redo from the repo root.
 
-   If main has moved on since the agent started, rebase the agent branch first (from the agent's worktree dir):
-   ```bash
-   cd <agent-worktree-path> && git rebase main && cd /Users/richardgarner/git/musicians
-   ```
-3. **Remove the worktree and branch** (also from the repo root):
+   If main has moved on since the feature branch was created, rebase the feature branch first:
    ```bash
    cd /Users/richardgarner/git/musicians
-   git worktree remove -f -f .claude/worktrees/<agent-id>
-   git branch -D <agent-branch>
+   git checkout mus-NN-feature
+   git rebase main
+   git checkout main
+   git merge --ff-only mus-NN-feature
    ```
-   Standing inside the worktree you're removing leaves the shell with an invalid cwd — subsequent commands fail with "Unable to read current working directory".
-4. **Report:** what was built, how many review cycles, whether code review passed first time.
+
+2. **Remove the feature branch, both agent branches, and both worktrees** (also from the repo root):
+   ```bash
+   cd /Users/richardgarner/git/musicians
+   git branch -d mus-NN-feature
+   git worktree remove -f -f .claude/worktrees/<dev-agent-id>
+   git branch -D <dev-agent-branch>
+   git worktree remove -f -f .claude/worktrees/<qa-automate-agent-id>   # skip if no-e2e
+   git branch -D <qa-automate-agent-branch>                              # skip if no-e2e
+   ```
+   Standing inside a worktree you're removing leaves the shell with an invalid cwd — subsequent commands fail with "Unable to read current working directory".
+
+3. **Report:** what was built, how many review cycles, whether code review passed first time, whether QA passed first time (or was skipped via `no-e2e`).
 
 ## Example execution plan
 
 ```
 /next-tickets MUS-1 MUS-2 MUS-3
   where MUS-3 is blocked by MUS-1
+  MUS-2 has the no-e2e label; MUS-1 and MUS-3 do not
 
 Execution:
   t=0   MUS-1 dev starts (parallel — single message, two Agent tool calls)
   t=0   MUS-2 dev starts (parallel)
-  t=1   MUS-1 dev done → MUS-1 code review starts
-  t=1   MUS-2 dev done → MUS-2 code review starts
-  t=2   MUS-1 review approved → MUS-1 Done → squash + merge + cleanup
+  t=1   MUS-1 dev done → MUS-1 qa-automate starts
+  t=1   MUS-2 dev done → (no-e2e, skip qa-automate) → combine → code review
+  t=2   MUS-1 qa-automate done → combine (mus-1-feature) → code review
+  t=2   MUS-2 review approved → QA (no-e2e, auto) → Done → ff-merge + cleanup
+  t=3   MUS-1 review approved → QA (user runs pnpm e2e:run, reports green)
+        → Done → ff-merge + cleanup
         MUS-3 dependency resolved → MUS-3 dev starts
-  t=2   MUS-2 review approved → MUS-2 Done → squash + merge + cleanup
-  t=3   MUS-3 dev done → MUS-3 code review starts
   ...
 ```

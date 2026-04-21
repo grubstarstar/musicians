@@ -96,10 +96,12 @@ Work is tracked in Jira. Use the `mcp__mcp-atlassian__*` MCP tools for all Jira 
 
 Kanban flow:
 ```
-To Do → Ready for Development → Doing → Code Review → Done
-                                            ↑           |
-                                            └───────────┘  (changes requested → back to Doing)
+To Do → Ready for Development → Doing → Code Review → QA → Done
+                                            ↑         ↑    |
+                                            └──┬──────┘    |
+                                               └───────────┘  (changes requested)
 ```
+Both loops exist: Code Review → Doing (nit from review) and QA → Doing (flow failure or app bug surfaced by Maestro).
 - `To Do` is the raw backlog.
 - `Ready for Development` is the curated shortlist of next-up work — `/next-tickets` pulls from here by default, falling back to `To Do` only if it's empty.
 
