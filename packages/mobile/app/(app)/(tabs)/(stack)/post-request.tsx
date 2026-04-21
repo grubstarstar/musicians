@@ -449,6 +449,7 @@ function PostRequestForm() {
 
       {createdRequestId === null ? (
         <Pressable
+          testID="post-request-submit"
           onPress={handleSubmit}
           disabled={!canSubmit}
           style={({ pressed }) => [

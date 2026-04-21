@@ -8,7 +8,7 @@ appId: com.musicians.app
 - runFlow: ../../helpers/logout.yaml
 - runFlow: ../../helpers/login-gigtar.yaml
 
-- tapOn: "My requests"
+- tapOn: "My requests, tab.*"
 - assertVisible: "Expressions of interest you've received"
 
 # RequestCard renders the band name as the header, with state pill = OPEN.

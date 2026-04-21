@@ -3,6 +3,13 @@
     "mcp-atlassian": {
       "command": "sh",
       "args": ["-c", "set -a && . ./.env && set +a && exec uvx mcp-atlassian"]
+    },
+    "ios-simulator": {
+      "command": "npx",
+      "args": ["-y", "ios-simulator-mcp"],
+      "env": {
+        "PATH": "/usr/local/bin/idb_companion/bin:/Library/Frameworks/Python.framework/Versions/3.10/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      }
     }
   }
 }

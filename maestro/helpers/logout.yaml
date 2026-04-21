@@ -2,7 +2,10 @@ appId: com.musicians.app
 ---
 # Sign out via the profile drawer (the smiling-face icon top-right of Home).
 # AppDrawer renders a "Log out" button — tapping it returns to /login.
+# The profile-menu button only exists on the Home screen, so navigate
+# there first via the bottom tab bar (callable from any tab).
+- tapOn: "Home, tab.*"
 - tapOn:
-    accessibilityText: "Open profile menu"
+    text: "Open profile menu"
 - tapOn: "Log out"
 - assertVisible: "Sign in to continue"

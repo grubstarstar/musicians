@@ -10,7 +10,7 @@ appId: com.musicians.app
 
 # Notices tab: shows every open request that isn't the caller's. The Testers
 # request gigtar posted is the only row.
-- tapOn: "Notices"
+- tapOn: "Notices, tab.*"
 - assertVisible: "Bands looking for musicians right now"
 - assertVisible: "The Testers"
 # Tap the row — `tapOn` on the band name targets the row Pressable since it

@@ -12,7 +12,7 @@ appId: com.musicians.app
 # Applied tab: lists the EoIs sesh has sent. The row title is the band name
 # ("The Testers"), the subtitle is the instrument ("Bass"), and the state
 # pill is "Accepted" (formatEoiStateLabel).
-- tapOn: "Applied"
+- tapOn: "Applied, tab.*"
 - assertVisible: "The Testers"
 - assertVisible: "Bass"
 - assertVisible: "Accepted"
@@ -27,6 +27,6 @@ appId: com.musicians.app
 # the bug fix lands. This flow uses launchApp:clearState=false so the
 # QueryClient keeps any prior cache; pull-to-refresh isn't currently exposed
 # on Home.
-- tapOn: "Home"
+- tapOn: "Home, tab.*"
 - assertVisible: "Your bands"
 - assertVisible: "The Testers"
