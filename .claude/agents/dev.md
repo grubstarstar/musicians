@@ -88,6 +88,17 @@ After implementing any complex pure functions, write unit tests for them. Follow
 - Run `pnpm test` and confirm all tests pass before transitioning the ticket
 - Commit the code to the git repo with the appropriate message.
 
+## Committing your work — non-negotiable
+
+**Your worktree is destroyed when you finish.** Anything not committed disappears. Do this before signalling completion or transitioning the ticket:
+
+1. **Never assume a path is gitignored without checking.** Run `git check-ignore -v <path>` (exits 0 = ignored, prints the rule). Don't infer from intuition — `.claude/skills/`, `.claude/agents/`, etc. are tracked in this repo even though they look like config.
+2. **Stage and commit explicitly.** `git add <specific files>` then `git commit -m "MUS-XX: <summary>"`. Never `git add -A`.
+3. **Verify the commit landed** with `git log --oneline -3 -- <path>` — your commit must appear on top. If it doesn't, the commit didn't happen — investigate before signalling completion.
+4. **If you genuinely cannot commit something** (truly gitignored, generated artefact), say so explicitly in your final report so the orchestrator can copy it out before worktree teardown.
+
+If you signal completion without verifying the commit, the harness cleans the worktree and your work is lost — which has happened before. This step is the difference between work shipped and work redone.
+
 ## E2E tests
 
 Every user-facing change must be covered by a passing Maestro end-to-end flow before the ticket moves to Code Review.

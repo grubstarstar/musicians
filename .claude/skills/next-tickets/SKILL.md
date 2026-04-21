@@ -88,24 +88,32 @@ Maximum 3 review cycles before escalating to the user.
 
 When a ticket reaches **Done**:
 
-1. **Squash the agent's branch into one ticket commit** (the WIP/follow-up shape from agent runs is noisy):
+**Critical:** every git command in this section MUST run from the repo root (`/Users/richardgarner/git/musicians`). The harness's previous cwd may still point inside an agent's worktree directory; running `git merge --ff-only <branch>` from inside that worktree merges the branch into itself (no-op on main) and silently leaves main behind. Always start with `cd /Users/richardgarner/git/musicians` — single command, no chaining — before the steps below.
+
+1. **(Optional) Squash the agent's branch into one ticket commit.** Skip this if the agent already produced a single clean commit with a `MUS-XX: ...` message. Only squash if there's WIP/follow-up noise:
    ```bash
    cd <agent-worktree-path>
    git reset --soft main
    git commit -m "MUS-XX: <ticket title>" -m "<body>"
    ```
-2. **Fast-forward merge into main** (keeps history linear — the project preference per CLAUDE.md):
+2. **Back to repo root, then fast-forward merge into main** (keeps history linear):
    ```bash
    cd /Users/richardgarner/git/musicians
    git merge --ff-only <agent-branch>
    ```
-   If main has moved on since the agent started, rebase the agent branch first.
-3. **Remove the worktree and branch:**
+   Verify with `git log --oneline -1` — top should be the agent's commit. If it says "Already up to date" but the commit isn't on main, you ran the merge from the wrong cwd; redo from the repo root.
+
+   If main has moved on since the agent started, rebase the agent branch first (from the agent's worktree dir):
    ```bash
+   cd <agent-worktree-path> && git rebase main && cd /Users/richardgarner/git/musicians
+   ```
+3. **Remove the worktree and branch** (also from the repo root):
+   ```bash
+   cd /Users/richardgarner/git/musicians
    git worktree remove -f -f .claude/worktrees/<agent-id>
    git branch -D <agent-branch>
    ```
-   Always `cd` back to the repo root first — removing the worktree you're standing in invalidates your shell's cwd.
+   Standing inside the worktree you're removing leaves the shell with an invalid cwd — subsequent commands fail with "Unable to read current working directory".
 4. **Report:** what was built, how many review cycles, whether code review passed first time.
 
 ## Example execution plan
