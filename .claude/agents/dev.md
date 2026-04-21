@@ -123,6 +123,36 @@ On hosts without the above (e.g. a Linux runner, a sandbox without Xcode, or the
 
 If the Maestro framework is not yet scaffolded in this repo (pre-MUS-71), skip this section and add a comment on the Jira ticket: "E2E coverage pending — framework not yet in place (MUS-71)."
 
+## Completion comment — required HANDOFF block
+
+Your final Jira comment on the ticket must end with a fenced `## HANDOFF` block so the orchestrator can pass structured data to the `qa-automate` agent without exposing your diff. Without this block, the pipeline cannot continue.
+
+Shape:
+
+```
+## HANDOFF
+
+new_testids:
+  - id: "post-request-submit"
+    description: "Submit button at the bottom of the Post Request form"
+  - id: "kind-musician-for-band"
+    description: "The 'Musician for a band' kind tile (radio option) on the Post Request form"
+modified_screens:
+  - "post-request"
+notes_for_e2e:
+  - "Submit button is below the fold; tests must scroll before tapping"
+```
+
+Rules:
+
+- Both `id` and `description` are mandatory for every testID. testIDs alone are opaque — `qa-automate` can't write meaningful flows from `kind-musician-for-band` without knowing it's the radio tile.
+- If you added no testIDs: `new_testids: []`. Do not omit the key.
+- If the ticket has the `no-e2e` label, still emit an empty HANDOFF block (`new_testids: []`, `modified_screens: []`, `notes_for_e2e: []`). The orchestrator reads the label and skips `qa-automate`; it still parses the block.
+- `modified_screens` is an array of short screen identifiers (route names, component filenames without extension) so `qa-automate` knows which journey the change touches.
+- `notes_for_e2e` captures UI-level gotchas `qa-automate` cannot see by reading your diff: elements that are below the fold, ordering constraints, timing sensitivities, navigation that differs from similar screens.
+
+The block is parsed by the orchestrator — keep it as valid YAML inside the fenced section, no prose between keys.
+
 ## Jira transitions
 
 When your implementation is complete and tests pass:

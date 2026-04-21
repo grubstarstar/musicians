@@ -112,9 +112,11 @@ Available global skills you may also invoke from chat:
 - `/dev`, `/code-review`, `/smoke-test`, `/unit-test`, `/qa`, `/write-a-prd`
 
 ## Agent pipeline conventions
-- Spawn `dev` and `code-review` subagents via the `Agent` tool with `subagent_type: "dev"` / `"code-review"`. Both belong to this project at `.claude/agents/`.
-- For `dev`: always pass `isolation: "worktree"` (the harness manages the worktree — never pre-create one yourself, see Gotchas) and `run_in_background: true` (frees the orchestrator).
+- Spawn `dev`, `qa-automate`, and `code-review` subagents via the `Agent` tool with `subagent_type: "dev"` / `"qa-automate"` / `"code-review"`. All three belong to this project at `.claude/agents/`.
+- For `dev` and `qa-automate`: always pass `isolation: "worktree"` (the harness manages the worktree — never pre-create one yourself, see Gotchas) and `run_in_background: true` (frees the orchestrator).
 - For `code-review`: `run_in_background: true`; no `isolation: "worktree"` needed (read-only).
+- Model selection: `dev` and `qa-automate` run on Sonnet; `code-review` runs on Opus. The agent files declare this in their frontmatter (`model:`). You can override via the `Agent` tool's `model` parameter if needed, but the defaults are load-bearing — `qa-automate` is mechanical Jira→YAML pattern-matching, `code-review` does the deep reasoning.
+- `qa-automate` takes the ticket's Jira description + AC + dev's `## HANDOFF` block as its input. It MUST NOT be given dev's diff or source files — see `.claude/agents/qa-automate.md` for the blind-to-dev rule.
 - When pulling a non-trivial ticket (schema changes, new domain concepts, modelling ambiguity), draft any clarifying corrections in chat first, get user OK, then `jira_update_issue`, then spawn dev. Avoids mid-pipeline rewriting.
 
 ## MCP servers
@@ -129,6 +131,15 @@ Available global skills you may also invoke from chat:
 
 ### Always spawn dev agents with `isolation: "worktree"`
 When orchestrating work via the `Agent` tool with `subagent_type: dev` (or `code-review`, `qa`, etc.), pass `isolation: "worktree"`. The harness then creates its own git worktree for the agent and the agent has full write access to it. Without isolation, a pre-created worktree at `../musicians-<ticket>/` has caused permission-denied errors for the agent's Write/Bash calls — see the MUS-51 attempt in this project's history. The `isolation: "worktree"` path has been reliable ever since.
+
+### Subagents cannot write under `.claude/agents/**`
+Discovered during MUS-74: the harness applies a protected-path policy that denies `Write`, `Edit`, and write-mode `Bash` calls against paths under `.claude/agents/**` for spawned subagents, even with `isolation: "worktree"` and accept-edits mode on. This is a deliberate safety rail — an agent editing its own definition could grant itself broader tools. The block is specific to `.claude/agents/**`; edits to `CLAUDE.md`, `.claude/skills/**`, and the rest of the repo go through fine.
+
+Practical consequence for the orchestrator: tickets that change agent definitions (new agent files, edits to `dev.md` / `code-review.md` / `qa-automate.md`) cannot be delegated to a dev subagent end-to-end. Options:
+- Implement the change directly from the orchestrator session (where this policy doesn't apply) — cleanest for tickets wholly inside `.claude/agents/**`.
+- Let the dev subagent do the non-agent parts, then apply the `.claude/agents/**` portion as a follow-up commit from the orchestrator (MUS-72 used this shape — see commit `4660f0b` following `72aadfa`).
+
+The subagent will still _diagnose_ the denial clearly in its completion comment; don't treat it as a configuration error to chase.
 
 ### Drizzle-kit `generate` is interactive and may fail in sandboxes
 `pnpm db:generate` prompts for rename-vs-create disambiguation when it detects structural schema changes. In a sandboxed session that prompt can't be answered. When this happens, hand-write the migration SQL file in `packages/server/drizzle/NNNN_<name>.sql`, append a matching entry to `drizzle/meta/_journal.json`, and copy the previous snapshot JSON as the new one. Apply with `pnpm db:migrate`. See `0004_tidy_pete_ross.sql` (MUS-56 events→rehearsals rename) and `0005_rename_rehearsals_constraints.sql` (MUS-59 constraint renames) for the pattern.
