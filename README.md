@@ -47,7 +47,7 @@ if you want to watch the flow execute on your main sim.
    `expo-secure-store`, and `expo-audio`, so Expo Go won't work. The build
    is cached at `build/MusiciansDev.app` (gitignored):
    ```sh
-   pnpm mobile:dev-build
+   pnpm e2e:build-app
    ```
    By default this kicks off an EAS **cloud** build, waits for it to
    finish, and downloads the produced simulator `.tar.gz` into `build/`.
@@ -55,7 +55,7 @@ if you want to watch the flow execute on your main sim.
    succeed first. If you want to build on your Mac instead (e.g. to
    avoid EAS build credits), set `BUILD_LOCAL=1`:
    ```sh
-   BUILD_LOCAL=1 pnpm mobile:dev-build
+   BUILD_LOCAL=1 pnpm e2e:build-app
    ```
    Local mode additionally needs Xcode CLI tools, CocoaPods, Ruby, and
    fastlane. Rebuild when:

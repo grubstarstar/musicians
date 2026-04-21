@@ -21,7 +21,7 @@ if [ ! -d "$dev_client_app" ]; then
   cat >&2 <<EOF
 [e2e:run] Cached dev-client app not found at:
             $dev_client_app
-          Run \`pnpm mobile:dev-build\` once to produce it (slow; needs Xcode).
+          Run \`pnpm e2e:build-app\` once to produce it (EAS cloud build by default).
           Rebuild after new native deps or an Expo SDK bump.
 EOF
   exit 1

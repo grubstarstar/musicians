@@ -36,7 +36,7 @@ DEEP_LINK="${DEEP_LINK:-exp+musicians://expo-development-client/?url=$(
   node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$DEV_SERVER_URL"
 )}"
 
-# Locate the cached dev-client .app. Default matches pnpm mobile:dev-build.
+# Locate the cached dev-client .app. Default matches pnpm e2e:build-app.
 # Caller can override via $DEV_CLIENT_APP.
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_CLIENT_APP="${DEV_CLIENT_APP:-$repo_root/build/MusiciansDev.app}"
@@ -84,13 +84,13 @@ fi
 
 # 3. Install the cached dev-client .app (if present). We don't fail the
 #    script if it's missing — the caller (pnpm e2e:run) catches that with a
-#    clearer message and a pointer to `pnpm mobile:dev-build`.
+#    clearer message and a pointer to `pnpm e2e:build-app`.
 if [ -d "$DEV_CLIENT_APP" ]; then
   log "Installing $DEV_CLIENT_APP..."
   xcrun simctl install "$udid" "$DEV_CLIENT_APP"
 else
   log "WARNING: $DEV_CLIENT_APP not found — skipping install."
-  log "         Run \`pnpm mobile:dev-build\` once to cache it."
+  log "         Run \`pnpm e2e:build-app\` once to cache it."
 fi
 
 # 4. Launch the app, then hand it the deep-link that tells the dev-client

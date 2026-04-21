@@ -114,7 +114,7 @@ Every user-facing change must be covered by a passing Maestro end-to-end flow be
 
 - Java 17 and the `maestro` CLI on PATH (default install lives at `$HOME/.maestro/bin/maestro`; the wrapper adds it to PATH automatically if it's there).
 - Xcode / `xcrun simctl` available, plus `jq` on PATH.
-- `build/MusiciansDev.app` cached. If missing, run `pnpm mobile:dev-build` once (slow — needs Xcode). Rebuild only when native deps or the Expo SDK change; plain JS/TS edits do not require it.
+- `build/MusiciansDev.app` cached. If missing, run `pnpm e2e:build-app` once (defaults to an EAS cloud build — no local Xcode needed; set `BUILD_LOCAL=1` to build on the Mac if you have the full iOS toolchain). Rebuild only when native deps or the Expo SDK change; plain JS/TS edits do not require it.
 - Test server + mobile bundler running in background terminals: `pnpm e2e:server` and `pnpm e2e:mobile`. Start these before `pnpm e2e:run`.
 
 ### If you cannot run them yourself

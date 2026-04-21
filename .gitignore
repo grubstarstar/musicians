@@ -33,7 +33,7 @@ dist
 # Environment variables
 .env
 
-# Cached mobile dev-client .app produced by `pnpm mobile:dev-build`
+# Cached mobile dev-client .app produced by `pnpm e2e:build-app`
 # (consumed by the Maestro sandboxed-sim setup — see scripts/e2e-sim-setup.sh).
 build/
 

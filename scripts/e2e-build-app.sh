@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mobile-dev-build.sh (MUS-72) — one-off iOS dev-client build.
+# e2e-build-app.sh (MUS-72) — one-off iOS dev-client build for the sandboxed E2E runner.
 #
 # Produces a simulator-compatible `build/MusiciansDev.app` (gitignored)
 # that `scripts/e2e-sim-setup.sh` + `scripts/e2e-run.sh` both know about.
@@ -32,7 +32,7 @@ archive="$out_dir/MusiciansDev.tar.gz"
 result_json="$out_dir/.eas-build-result.json"
 
 if [ "${BUILD_LOCAL:-0}" = "1" ]; then
-  echo "[mobile:dev-build] Local mode (BUILD_LOCAL=1): needs Xcode + CocoaPods + fastlane..."
+  echo "[e2e:build-app] Local mode (BUILD_LOCAL=1): needs Xcode + CocoaPods + fastlane..."
   pnpm --filter @musicians/mobile exec eas build \
     --profile development \
     --platform ios \
@@ -40,8 +40,8 @@ if [ "${BUILD_LOCAL:-0}" = "1" ]; then
     --non-interactive \
     --output "$archive"
 else
-  echo "[mobile:dev-build] Running eas build on EAS cloud (no local iOS toolchain required)..."
-  echo "[mobile:dev-build] Waiting for the build to finish — this takes several minutes."
+  echo "[e2e:build-app] Running eas build on EAS cloud (no local iOS toolchain required)..."
+  echo "[e2e:build-app] Waiting for the build to finish — this takes several minutes."
   pnpm --filter @musicians/mobile exec eas build \
     --profile development \
     --platform ios \
@@ -53,17 +53,17 @@ else
   artifact_url=$(jq -r '(if type=="array" then .[0] else . end).artifacts.buildUrl // empty' "$result_json")
 
   if [ -z "$artifact_url" ]; then
-    echo "[mobile:dev-build] ERROR: could not parse artifact URL from EAS response." >&2
-    echo "[mobile:dev-build] Response preserved at $result_json for debugging." >&2
+    echo "[e2e:build-app] ERROR: could not parse artifact URL from EAS response." >&2
+    echo "[e2e:build-app] Response preserved at $result_json for debugging." >&2
     exit 1
   fi
 
-  echo "[mobile:dev-build] Downloading $artifact_url..."
+  echo "[e2e:build-app] Downloading $artifact_url..."
   curl -fL --progress-bar -o "$archive" "$artifact_url"
   rm -f "$result_json"
 fi
 
-echo "[mobile:dev-build] Extracting .app from $archive..."
+echo "[e2e:build-app] Extracting .app from $archive..."
 tar -xzf "$archive" -C "$out_dir"
 rm -f "$archive"
 
@@ -77,8 +77,8 @@ if [ ! -d "$out_dir/MusiciansDev.app" ]; then
 fi
 
 if [ ! -d "$out_dir/MusiciansDev.app" ]; then
-  echo "[mobile:dev-build] ERROR: no .app produced under $out_dir." >&2
+  echo "[e2e:build-app] ERROR: no .app produced under $out_dir." >&2
   exit 1
 fi
 
-echo "[mobile:dev-build] Cached $out_dir/MusiciansDev.app"
+echo "[e2e:build-app] Cached $out_dir/MusiciansDev.app"
