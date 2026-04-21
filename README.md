@@ -43,14 +43,22 @@ if you want to watch the flow execute on your main sim.
    ```sh
    brew install jq
    ```
-3. Build the dev-client iOS `.app` locally. The app uses `expo-dev-client`,
+3. Build the dev-client iOS `.app`. The app uses `expo-dev-client`,
    `expo-secure-store`, and `expo-audio`, so Expo Go won't work. The build
    is cached at `build/MusiciansDev.app` (gitignored):
    ```sh
    pnpm mobile:dev-build
    ```
-   Under the hood this runs `eas build --profile development --platform ios --local`,
-   which takes several minutes and needs Xcode installed. Rebuild when:
+   By default this kicks off an EAS **cloud** build, waits for it to
+   finish, and downloads the produced simulator `.tar.gz` into `build/`.
+   No local Xcode / CocoaPods / fastlane required, but `eas whoami` must
+   succeed first. If you want to build on your Mac instead (e.g. to
+   avoid EAS build credits), set `BUILD_LOCAL=1`:
+   ```sh
+   BUILD_LOCAL=1 pnpm mobile:dev-build
+   ```
+   Local mode additionally needs Xcode CLI tools, CocoaPods, Ruby, and
+   fastlane. Rebuild when:
    - New native deps land (anything needing a Pod install)
    - The Expo SDK bumps
    - `app.json` iOS config changes
