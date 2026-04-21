@@ -101,12 +101,27 @@ If you signal completion without verifying the commit, the harness cleans the wo
 
 ## E2E tests
 
-Every user-facing change must be covered by a passing Maestro end-to-end flow before the ticket moves to Code Review.
+Every user-facing change must be covered by a passing Maestro end-to-end flow before the ticket moves to Code Review. As of MUS-72 you run the flows yourself on macOS hosts — do not hand this step back to the user unless a prereq below is genuinely missing.
 
-- **Existing flow covers it?** Run only that flow file (e.g. `maestro test maestro/flows/request-to-join/02-sesh-expresses-interest.yaml`) and confirm it still exits 0 with your changes.
+### Running flows
+
+- **Whole journey (default).** `pnpm e2e:run` boots a dedicated `MaestroTest` simulator (headless — no Simulator.app window), installs the cached `build/MusiciansDev.app`, deep-links it at `http://localhost:8082` to skip the dev-client launcher, and runs every flow under `maestro/flows/request-to-join/`. Confirm the process exits 0.
+- **Single flow file.** `bash scripts/e2e-run.sh maestro/flows/request-to-join/02-sesh-expresses-interest.yaml`. Prefer this for targeted re-runs — much faster. Run only the flow(s) your change actually affects; never run the full suite speculatively.
+- **Existing flow covers it?** Run that file and confirm exit 0 with your changes.
 - **No existing coverage?** Add a new flow (or extend an existing one in the same journey) that drives the new code path through the UI. Pick the closest journey under `maestro/flows/**`; only create a new flow file if nothing fits.
-- Run **only the specific flow(s) your change affects**. Do not run the full E2E suite — full-suite runs are a separate manual step configured later.
-- If the Maestro framework is not yet scaffolded in this repo (pre-MUS-71), skip this section and add a comment on the Jira ticket: "E2E coverage pending — framework not yet in place (MUS-71)."
+
+### Prereqs (macOS host)
+
+- Java 17 and the `maestro` CLI on PATH (default install lives at `$HOME/.maestro/bin/maestro`; the wrapper adds it to PATH automatically if it's there).
+- Xcode / `xcrun simctl` available, plus `jq` on PATH.
+- `build/MusiciansDev.app` cached. If missing, run `pnpm mobile:dev-build` once (slow — needs Xcode). Rebuild only when native deps or the Expo SDK change; plain JS/TS edits do not require it.
+- Test server + mobile bundler running in background terminals: `pnpm e2e:server` and `pnpm e2e:mobile`. Start these before `pnpm e2e:run`.
+
+### If you cannot run them yourself
+
+On hosts without the above (e.g. a Linux runner, a sandbox without Xcode, or the cached `.app` is missing and building it is out of scope for the ticket), say so explicitly in your Jira completion comment: name the missing prereq, confirm your flow edits at least parse, and ask the user to run `pnpm e2e:run` before Code Review. Do not silently skip the E2E step.
+
+If the Maestro framework is not yet scaffolded in this repo (pre-MUS-71), skip this section and add a comment on the Jira ticket: "E2E coverage pending — framework not yet in place (MUS-71)."
 
 ## Jira transitions
 
