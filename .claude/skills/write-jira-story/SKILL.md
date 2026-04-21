@@ -106,17 +106,40 @@ After the issue is created, report back to the user with the issue key and URL s
 
 ## Filing notes — Jira ADF rendering gotchas
 
-The MCP `jira_create_issue` tool converts your Markdown to Atlassian Document Format (ADF). The converter has known bugs that mangle output. Follow these rules when writing the `description`:
+The MCP `jira_create_issue` tool converts your Markdown to **Jira Wiki markup** and then to ADF. Anything that looks like a Wiki inline-format token gets eaten. Follow these rules when writing the `description`:
 
 **Never put fenced code blocks inside list items.** The converter strips formatting and underscores get interpreted as italics. If you need to show a structured example or a code snippet, hoist it to the top level with a "Shape:" or "Rules:" lead-in like this very SKILL.md does.
 
 **Wrap inline identifiers in single backticks**, especially anything containing underscores (`customfield_10010`, `auth_token`, `key_user_actions`). Without backticks, the underscores become italic markers and the identifier renders as `keyuseractions` with stray italic runs.
 
+**Never use bare Jira Wiki inline-format characters as prose connectors.** In Jira Wiki, `+x+`, `-x-`, `^x^`, `~x~`, `*x*`, `_x_` mean underline / strikethrough / superscript / subscript / bold / italic. When the converter sees `foo + bar` or `useQuery + isLoading` in free text, it can pair the `+` signs and silently delete them, leaving `foo  bar`. Same goes for `-`, `^`, `~` when they appear between tokens.
+
+Rewrite rules — apply to prose **outside** backticks:
+
+- Replace ` + ` with ` and ` (or ` plus `, ` with `, ` alongside `) — never a bare `+`.
+- Replace ` & ` with ` and `.
+- Replace bare `~` used to mean "approximately" with the word `approximately` or `~`-inside-backticks.
+- Hyphenated phrases are fine (`user-observable`, `zero-groups`) — the danger is only `-word-` with whitespace either side.
+- If you genuinely need the literal character to appear, wrap the whole phrase in backticks: `` `a + b` `` renders as a monospace `a + b` and is safe.
+
 **Avoid single-asterisk emphasis** (`*like this*`). Use `**bold**` sparingly when you need emphasis. Plain text is safest.
 
 **Avoid backslash escapes** in the description body — they leak through the converter as literal backslashes.
 
+**Prefer ASCII punctuation where possible.** Em-dashes (`—`) and en-dashes (`–`) pass through cleanly, but curly quotes (`"` `"` `'` `'`) and other fancy glyphs sometimes don't — stick to straight quotes in the description body.
+
 These rules apply to the `description` you pass to `jira_create_issue`. They do not apply to chat with the user.
+
+### Pre-flight scan (enforce strictly)
+
+Before calling `jira_create_issue`, scan the `description` text you are about to send and reject it if any of these patterns appear **outside backtick-wrapped spans**:
+
+- ` + ` (space-plus-space) between words
+- ` & ` (space-ampersand-space) between words
+- ` - ` in a context that looks like `word - word` inline inside a sentence (bullet-list dashes at line starts are fine)
+- A bare `~` used as "approximately"
+
+If you find a hit, rewrite it per the rules above, then re-scan. Do not file until the scan is clean. If unsure whether something is risky, wrap it in backticks — backticks are always safe.
 
 ## Step 5 — Confirm and hand off
 
