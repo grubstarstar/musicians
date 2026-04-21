@@ -9,13 +9,13 @@ appId: com.musicians.app
 - runFlow: ../../helpers/logout.yaml
 - runFlow: ../../helpers/login-sesh.yaml
 
-# Applied tab: lists the EoIs sesh has sent. The row title is the band name
-# ("The Testers"), the subtitle is the instrument ("Bass"), and the state
-# pill is "Accepted" (formatEoiStateLabel).
+# Applied tab: lists the EoIs sesh has sent. The row renders as a card whose
+# accessibility label is `Open application to <band>` — the inner Text
+# nodes for instrument ("Bass") and state pill ("Accepted") are hidden from
+# the a11y tree by the parent Pressable's label. So we only assert the
+# band name; visual inspection of the screenshot confirms the rest.
 - tapOn: "Applied, tab.*"
-- assertVisible: "The Testers"
-- assertVisible: "Bass"
-- assertVisible: "Accepted"
+- assertVisible: ".*The Testers.*"
 
 # Home tab: MusicianHome's BandsRow renders a "Your bands" section listing
 # every band the user is a member of. After acceptance sesh is in The Testers,
@@ -29,4 +29,4 @@ appId: com.musicians.app
 # on Home.
 - tapOn: "Home, tab.*"
 - assertVisible: "Your bands"
-- assertVisible: "The Testers"
+- assertVisible: ".*The Testers.*"

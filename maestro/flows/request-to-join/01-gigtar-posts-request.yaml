@@ -2,18 +2,25 @@ appId: com.musicians.app
 ---
 # Flow 01 of the request-to-join e2e journey (MUS-71).
 # - Reset the test DB to the minimal fixture (gigtar, sesh, The Testers).
-# - Launch the app (no clearState — that wipes the dev-client's saved server
-#   URL and dumps us at the dev launcher screen instead of the app).
+# - Ensure the app is in the foreground (see launchApp note below).
 # - If a previous run left someone signed in, log them out first so we
 #   always start the journey from the login screen.
 # - Sign in as gigtar.
 # - Post a `Musician for a band` request: instrument = Bass, band = The Testers.
 - runFlow: ../../helpers/reset.yaml
+# The app is pre-launched by scripts/e2e-sim-setup.sh, which seeds the
+# dev-launcher defaults so it auto-connects to Metro. Maestro's own XCTest
+# driver install (happens at the start of every run) backgrounds the app,
+# so force-relaunch here to put it in a known state. stopApp: true is the
+# default, called out for clarity.
 - launchApp
-- runFlow:
-    when:
-      visible: "Open profile menu"
-    file: ../../helpers/logout.yaml
+# Cold bundle fetch can take 20-40s on the sandboxed sim. Wait explicitly
+# before handing off to login-gigtar.yaml (whose default assertVisible
+# timeout is 10s). The setup script uninstalls the app + resets the
+# keychain before each run, so we always land on the login screen.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
 - runFlow: ../../helpers/login-gigtar.yaml
 
 # Open the My requests tab (where the "+" entry to post a request lives).

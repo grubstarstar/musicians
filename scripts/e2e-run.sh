@@ -6,6 +6,10 @@
 #    dedicated `MaestroTest` simulator (see that script for details).
 # 2. Run Maestro against that sim using its UDID so the tests don't land on
 #    the user's daily-driver simulator.
+# 3. On failure, convert Maestro's full-resolution PNG screenshots into small
+#    JPEGs under build/e2e-failures/ so agents can open them without bloating
+#    the context window. Maestro writes ~150KB PNGs per step; sips compresses
+#    a failure screenshot to ~10KB at 700px wide / JPEG q40.
 #
 # For the interactive workflow (GUI sim open, user at the keyboard) use
 # `pnpm e2e:mobile` + `pnpm e2e:run` — this script serves both paths because
@@ -43,5 +47,56 @@ if [ -z "$udid" ]; then
   exit 1
 fi
 
+# Remember the most recent Maestro test dir before the run so we can find the
+# new one afterwards. Maestro writes to ~/.maestro/tests/<timestamp>/.
+tests_root="$HOME/.maestro/tests"
+before_run=""
+if [ -d "$tests_root" ]; then
+  before_run=$(ls -1t "$tests_root" 2>/dev/null | head -n1 || true)
+fi
+
 echo "[e2e:run] Running Maestro on $udid against $flow_path" >&2
-exec maestro --device "$udid" test "$flow_path"
+set +e
+# If the argument is a directory, run the flows inside it in filename-sorted
+# order (01-*, 02-*, ...). Pointing `maestro test` at the directory itself
+# iterates in file mtime order instead, which breaks any journey where step
+# ordering matters — e.g. request-to-join's "flow 01 posts, flow 02 EOIs
+# against that post". `-c` makes Maestro stop at the first failure and skip
+# the rest, mirroring the single-directory-arg behaviour.
+if [ -d "$flow_path" ]; then
+  flows=("$flow_path"/[0-9]*-*.yaml)
+  if [ ! -e "${flows[0]}" ]; then
+    echo "[e2e:run] ERROR: no numbered flows under $flow_path." >&2
+    exit 1
+  fi
+  maestro --device "$udid" test "${flows[@]}"
+else
+  maestro --device "$udid" test "$flow_path"
+fi
+status=$?
+set -e
+
+# On failure, compress Maestro's latest-run PNGs into build/e2e-failures/
+# as small JPEGs. sips is bundled with macOS so no extra deps.
+if [ "$status" -ne 0 ] && command -v sips >/dev/null 2>&1 && [ -d "$tests_root" ]; then
+  after_run=$(ls -1t "$tests_root" 2>/dev/null | head -n1 || true)
+  if [ -n "$after_run" ] && [ "$after_run" != "$before_run" ]; then
+    latest_dir="$tests_root/$after_run"
+    out_dir="$repo_root/build/e2e-failures/$after_run"
+    mkdir -p "$out_dir"
+    # Maestro writes screenshots as .png files directly under the timestamp
+    # directory (one per step/failure). Quiet sips to keep the log short.
+    png_count=0
+    while IFS= read -r -d '' png; do
+      base=$(basename "$png" .png)
+      sips -Z 700 -s format jpeg --setProperty formatOptions 40 \
+        "$png" --out "$out_dir/$base.jpg" >/dev/null 2>&1 || true
+      png_count=$((png_count + 1))
+    done < <(find "$latest_dir" -maxdepth 2 -name '*.png' -print0)
+    if [ "$png_count" -gt 0 ]; then
+      echo "[e2e:run] Wrote $png_count compressed screenshot(s) to $out_dir" >&2
+    fi
+  fi
+fi
+
+exit "$status"

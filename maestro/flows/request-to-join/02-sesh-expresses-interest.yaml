@@ -9,13 +9,15 @@ appId: com.musicians.app
 - runFlow: ../../helpers/login-sesh.yaml
 
 # Notices tab: shows every open request that isn't the caller's. The Testers
-# request gigtar posted is the only row.
+# request gigtar posted is the only row. Maestro's text matcher is anchored
+# (regex must match the whole value, not a substring), and the row Pressable
+# exposes the composed accessibility label `Open request from <band> for
+# <instrument>` rather than a standalone "The Testers" text node. Match the
+# composed label so both visibility + tap hit the same element.
 - tapOn: "Notices, tab.*"
 - assertVisible: "Bands looking for musicians right now"
-- assertVisible: "The Testers"
-# Tap the row — `tapOn` on the band name targets the row Pressable since it
-# has accessibility text and is the inner heading.
-- tapOn: "The Testers"
+- assertVisible: "Open request from The Testers for Bass"
+- tapOn: "Open request from The Testers for Bass"
 
 # Detail screen for the request. The instrument is rendered as the
 # `detailsHeading` ("Bass") and the `extraRows` include "Slots 0 / 1 filled".

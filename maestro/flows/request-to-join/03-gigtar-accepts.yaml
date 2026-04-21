@@ -14,15 +14,20 @@ appId: com.musicians.app
 # RequestCard renders the band name as the header, with state pill = OPEN.
 # It expands by default (useState(true) in RequestCard) so the EoI row should
 # already be visible — no need to toggle. We assert sesh's name is there to
-# confirm the EoI rendered.
-- assertVisible: "The Testers"
+# confirm the EoI rendered. Maestro's text matcher is anchored (see flow 02
+# comment) so use a wildcarded pattern — the band name sits inside a
+# composite accessibility label on the card.
+- assertVisible: ".*The Testers.*"
 # Sesh's display name is rendered via formatUserDisplayName, which prefers
 # firstName when present — the seed sets firstName="Sesh".
-- assertVisible: "Sesh"
+- assertVisible: ".*Sesh.*"
 
-# Accept the EoI. There's also a Reject button — `tapOn: "Accept"` matches
-# the Pressable with accessibilityLabel `Accept expression of interest from Sesh`.
-- tapOn: "Accept"
+# Accept the EoI. The button's accessibility label is `Accept expression of
+# interest from Sesh`; the inner "Accept" Text is hidden from the a11y tree
+# by the parent's label. Maestro's anchored regex needs wildcards to match
+# inside the composed label — `.*Accept.*` still avoids the Reject button
+# (label: "Reject expression of interest from Sesh").
+- tapOn: ".*Accept.*"
 
 # After acceptance, the EoI row's state pill renders ACCEPTED.
-- assertVisible: "Accepted"
+- assertVisible: ".*Accepted.*"
