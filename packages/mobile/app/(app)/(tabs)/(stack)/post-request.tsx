@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { QueryBoundary } from "../../../../src/components/QueryBoundary";
 import { queryClient, trpc } from "../../../../src/trpc";
+import { parsePostRequestParams } from "../../../../src/utils/parsePostRequestParams";
 import {
   buildBandForGigSlotInput,
   buildBandForMusicianInput,
@@ -102,25 +103,55 @@ function PostRequestForm() {
     trpc.venues.list.queryOptions(),
   );
 
+  // MUS-70: seed from deep-link params supplied by in-context entry points
+  // (e.g. band page `+`, gig page `+`). `useLocalSearchParams` is stable on
+  // first render; we only consume it once to seed `useState` initialisers so
+  // user edits are never overwritten by a later re-read of the same params.
+  const rawParams = useLocalSearchParams<{
+    kind?: string;
+    bandId?: string;
+    gigId?: string;
+    genre?: string;
+  }>();
+  // `useMemo([])` freezes the seed to the first-render params. Even if the
+  // caller navigates to the same screen with different params later, the
+  // form state is already populated and honours user edits from that point.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const seed = useMemo(() => parsePostRequestParams(rawParams), []);
+
   const myBands = useMemo(
     () => filterMyBands(allBands, me.id),
     [allBands, me.id],
   );
 
-  const [kind, setKind] = useState<RequestKind>("musician-for-band");
+  const [kind, setKind] = useState<RequestKind>(
+    seed.kind ?? "musician-for-band",
+  );
 
-  // musician-for-band form state
+  // musician-for-band form state. Seed precedence: explicit `bandId` param
+  // wins, otherwise fall back to the "only one band" convenience default.
   const [selectedBandId, setSelectedBandId] = useState<number | null>(
-    myBands.length === 1 ? myBands[0].id : null,
+    seed.bandId !== null && myBands.some((b) => b.id === seed.bandId)
+      ? seed.bandId
+      : myBands.length === 1
+        ? myBands[0].id
+        : null,
   );
   const [bandPickerOpen, setBandPickerOpen] = useState(false);
   const [instrument, setInstrument] = useState("");
   const [style, setStyle] = useState("");
   const [rehearsalCommitment, setRehearsalCommitment] = useState("");
 
-  // band-for-gig-slot form state
+  // band-for-gig-slot form state. Seed precedence mirrors `selectedBandId`:
+  // explicit `gigId` wins (only if the viewer actually organises that gig —
+  // the gig-side `+` is rendered owner-only, but a pasted URL shouldn't bypass
+  // that check), otherwise fall back to the "only one gig" convenience.
   const [selectedGigId, setSelectedGigId] = useState<number | null>(
-    myGigs.length === 1 ? myGigs[0].id : null,
+    seed.gigId !== null && myGigs.some((g) => g.id === seed.gigId)
+      ? seed.gigId
+      : myGigs.length === 1
+        ? myGigs[0].id
+        : null,
   );
   const [gigPickerOpen, setGigPickerOpen] = useState(false);
   const [setLength, setSetLength] = useState("");
