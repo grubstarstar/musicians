@@ -1,0 +1,86 @@
+appId: com.musicians.app
+---
+# Flow 01 of the post-request-from-band e2e journey (MUS-70).
+# - Reset the test DB to the minimal fixture (gigtar, sesh, The Testers).
+# - Launch the app; if a previous run left someone signed in, log them out.
+# - Sign in as gigtar (who owns "The Testers", so the band appears in Home).
+# - Navigate from Home → "The Testers" band detail page.
+# - Tap the in-context `+ Find a musician` CTA (testID: post-request-cta-band).
+# - Assert the Post Request form opens with:
+#     * "Musician for a band" kind pre-selected (via composite a11y prefix match).
+#     * BAND section heading visible (band picker rendered — value not assertable,
+#       see coverage-gap note at assertion #3).
+#     * INSTRUMENT section heading visible (instrument field rendered — placeholder
+#       not in a11y tree, see coverage-gap note at assertion #4).
+- runFlow: ../../helpers/reset.yaml
+
+# The app is pre-launched by scripts/e2e-sim-setup.sh.  Re-launch here to
+# put it in a known foreground state (Maestro's XCTest driver install
+# backgrounds it at the start of every run).
+- launchApp
+
+# Cold bundle fetch can take 20-40s. Wait explicitly before interacting.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# If a prior run left someone logged in, sign them out before proceeding.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+- runFlow: ../../helpers/login-gigtar.yaml
+
+# --- Navigate to the band detail page ---
+# gigtar owns "The Testers", so it appears in the "Your bands" row on Home.
+- tapOn: "Home, tab.*"
+- assertVisible: "Your bands"
+# The band card renders as a pressable with the band name as visible text.
+- tapOn: ".*The Testers.*"
+# Confirm we're on the band detail screen by asserting its heading.
+- assertVisible: ".*The Testers.*"
+
+# --- Tap the in-context "Find a musician" CTA ---
+# The CTA is rendered below the hero section, above the Members list.
+# Use its testID (from dev's HANDOFF) because the `+` icon is a pressable
+# whose a11y label may not be reliably matched as a plain text selector.
+- tapOn:
+    id: "post-request-cta-band"
+
+# --- Assert the Post Request form is pre-seeded ---
+# 1. Screen title confirms we navigated to the form.
+- assertVisible: "Post request"
+
+# 2. "Musician for a band" kind is pre-selected.
+#    Kind tiles are composite `radio button` elements on iOS. The a11y text
+#    for the tile is a concatenation of the title, description, and an
+#    Ionicons `checkmark` glyph on the currently-selected tile — e.g.:
+#      "Musician for a band, I lead a band and want someone to join us., "
+#    Maestro anchors the full a11y string, so we use a prefix regex ending
+#    at the comma immediately after the title.  This matches the composite
+#    label robustly without depending on the description text (which could
+#    change) or the icon glyph.
+- assertVisible: "Musician for a band,.*"
+
+# 3. BAND section heading confirms the band picker rendered.
+#    COVERAGE GAP: the band picker's accessibilityLabel is frozen on
+#    "Select a band" even when a band is selected (app-level a11y gap —
+#    not fixable from the flow).  Asserting "Select a band" would always
+#    pass regardless of the pre-fill, providing false-positive coverage.
+#    We assert the section heading "BAND" instead, which confirms the field
+#    rendered but cannot verify the pre-selected value.
+#    Follow-up: file a ticket to set the picker's accessibilityLabel to
+#    reflect the selected band name so this can be properly asserted.
+- assertVisible: "BAND"
+
+# 4. INSTRUMENT section heading confirms the instrument field rendered.
+#    COVERAGE GAP: the placeholder text "e.g. Bass" is not exposed in the
+#    iOS a11y tree (only the section heading "INSTRUMENT" is accessible).
+#    The heading is a separate label Text node above the TextInput and
+#    renders whatever the input's value is, so this assertion confirms
+#    the field rendered but does NOT verify empty vs. pre-filled — same
+#    shape of gap as assertion #3.
+#    Follow-up: a testID on the TextInput or its placeholder would allow
+#    a stronger assertion here.
+- assertVisible: "INSTRUMENT"
