@@ -8,6 +8,7 @@
     "mobile": "pnpm --filter @musicians/mobile",
     "mobile:start": "pnpm mobile start",
     "mobile:eas-dev-build": "pnpm mobile exec eas build:dev --platform ios",
+    "mobile:dev-build": "bash scripts/mobile-dev-build.sh",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:watch": "pnpm --filter @musicians/web test:watch",
@@ -21,7 +22,8 @@
     "e2e:db-setup": "pnpm --filter @musicians/server e2e:db-setup",
     "e2e:server": "pnpm --filter @musicians/server e2e:server",
     "e2e:mobile": "NODE_ENV=test pnpm --filter @musicians/mobile e2e:start",
-    "e2e:run": "cd maestro && maestro test flows/request-to-join"
+    "e2e:setup-sim": "bash scripts/e2e-sim-setup.sh",
+    "e2e:run": "bash scripts/e2e-run.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

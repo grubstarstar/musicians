@@ -26,20 +26,39 @@ The harness wipes a dedicated Postgres DB (`musicians_test`) between runs and
 points the mobile bundle at a parallel server on port 3002, so it never touches
 your dev data.
 
+`pnpm e2e:run` targets a dedicated headless simulator called `MaestroTest`
+(created on first run), not your daily-driver sim. That keeps unattended
+Claude Code agent runs from clobbering your auth/session state, and avoids
+popping a Simulator.app window during long test runs. See
+[Running the journey](#running-the-journey) below for the interactive path
+if you want to watch the flow execute on your main sim.
+
 ### One-time setup
 
-1. Install Maestro (CLI):
+1. Install Maestro (CLI, needs Java 17 on PATH):
    ```sh
    curl -Ls "https://get.maestro.mobile.dev" | bash
    ```
-2. Build and install a dev-client iOS build on the simulator. The app uses
-   `expo-dev-client`, `expo-secure-store`, and `expo-audio`, so Expo Go won't
-   work. EAS does this for you:
+2. Install `jq` (used by the sim-setup script):
    ```sh
-   pnpm mobile:eas-dev-build
+   brew install jq
    ```
-3. Make sure Postgres is up: `docker compose up -d postgres`.
-4. Create the test DB and apply migrations (idempotent — safe to re-run):
+3. Build the dev-client iOS `.app` locally. The app uses `expo-dev-client`,
+   `expo-secure-store`, and `expo-audio`, so Expo Go won't work. The build
+   is cached at `build/MusiciansDev.app` (gitignored):
+   ```sh
+   pnpm mobile:dev-build
+   ```
+   Under the hood this runs `eas build --profile development --platform ios --local`,
+   which takes several minutes and needs Xcode installed. Rebuild when:
+   - New native deps land (anything needing a Pod install)
+   - The Expo SDK bumps
+   - `app.json` iOS config changes
+
+   Plain JS/TS changes do NOT require a rebuild — the dev-client loads JS
+   from the Metro bundler at runtime.
+4. Make sure Postgres is up: `docker compose up -d postgres`.
+5. Create the test DB and apply migrations (idempotent — safe to re-run):
    ```sh
    pnpm e2e:db-setup
    ```
@@ -55,14 +74,43 @@ pnpm e2e:server
 # Terminal 2 — mobile bundler with .env.test (EXPO_PUBLIC_API_URL=http://localhost:3002)
 pnpm e2e:mobile
 
-# Terminal 3 — Maestro
+# Terminal 3 — Maestro against the sandboxed MaestroTest sim
 pnpm e2e:run
 ```
 
-`pnpm e2e:run` boots the iOS simulator if it isn't running and executes every
-flow under `maestro/flows/request-to-join/` in alphabetical order (01 → 04).
+`pnpm e2e:run` delegates to `scripts/e2e-sim-setup.sh`, which is idempotent:
+
+- reuses an existing simulator named `MaestroTest` or creates one
+  (default `iPhone 16 Pro`, latest installed iOS runtime);
+- boots it headlessly (no Simulator.app window);
+- installs `build/MusiciansDev.app`;
+- launches the app and deep-links it at `http://localhost:8082` so the
+  dev-client skips its launcher screen;
+- then runs every flow under `maestro/flows/request-to-join/` in
+  alphabetical order (01 → 04) against that sim's UDID.
+
 Running it twice in a row should both pass — flow 01 hits `POST /test/reset`
 which truncates and reseeds the test DB.
+
+You can also call `pnpm e2e:setup-sim` on its own to just (re)prime the sim,
+or pass a single flow file:
+
+```sh
+bash scripts/e2e-run.sh maestro/flows/request-to-join/02-sesh-expresses-interest.yaml
+```
+
+### Running against your daily-driver simulator
+
+If you'd rather watch the flow step through on the sim you already have
+open, bypass `pnpm e2e:run` and invoke Maestro directly — it will auto-target
+the only running iOS simulator:
+
+```sh
+cd maestro && maestro test flows/request-to-join
+```
+
+Use this when Xcode isn't available on the host, when the dev-client `.app`
+hasn't been built yet, or when you're debugging a flow interactively.
 
 ### What's covered
 
