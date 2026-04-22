@@ -10,6 +10,7 @@ import {
   hasPromoterRole,
   listGigsByOrganiser,
 } from '../gigs/queries.js';
+import { listMyPromoterGroups } from '../promoterGroups/queries.js';
 import { getUpcomingRehearsalsForBand } from '../rehearsals/queries.js';
 import {
   createEoi,
@@ -66,6 +67,18 @@ export const appRouter = router({
         }),
       )
       .query(({ input }) => getUpcomingRehearsalsForBand(input.bandId, input.limit)),
+  }),
+  // Promoter groups (MUS-82). Read-only surface — returns the caller's
+  // promoter groups with each group's linked venues. Resolution goes
+  // user_roles (role = 'promoter') → promoters_promoter_groups →
+  // promoter_groups → promoter_groups_venues → venues. A user with no
+  // promoter role gets `[]` (not an error). No create/update/delete
+  // procedures in this slice.
+  promoterGroups: router({
+    listMine: protectedProcedure.query(({ ctx }) => {
+      const userId = Number(ctx.user.id);
+      return listMyPromoterGroups(userId);
+    }),
   }),
   // Venues (MUS-58). Minimal list endpoint so the mobile
   // `promoter-for-venue-night` form can let the caller pick a venue. No
