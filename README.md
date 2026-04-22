@@ -79,7 +79,8 @@ The e2e flow needs three processes running together. Open three terminals:
 # Terminal 1 — test server (port 3002, NODE_ENV=test, points at musicians_test)
 pnpm e2e:server
 
-# Terminal 2 — mobile bundler with .env.test (EXPO_PUBLIC_API_URL=http://localhost:3002)
+# Terminal 2 — mobile bundler (exports EXPO_PUBLIC_API_URL=http://localhost:3002
+# so the app hits the test server instead of the default dev port 3001)
 pnpm e2e:mobile
 
 # Terminal 3 — Maestro against the sandboxed MaestroTest sim
@@ -143,5 +144,9 @@ slot in as more directories under `maestro/flows/`.
 - `POST /test/reset` is mounted only when `NODE_ENV=test`. The dev server
   (`pnpm dev`, port 3001) returns 404 for that path.
 - The test DB is `musicians_test` — completely separate from `musicians`.
-- `.env.test` is committed under `packages/mobile/` and only contains
-  deterministic, non-secret config (the test server URL).
+- The test server URL is supplied by `pnpm e2e:mobile`, which exports
+  `EXPO_PUBLIC_API_URL=http://localhost:3002` for the Metro bundler.
+  `EXPO_PUBLIC_API_URL` is the one knob for switching between the main
+  dev server (`http://localhost:3001`, the fallback in
+  `packages/mobile/src/trpc.ts`) and the e2e test server
+  (`http://localhost:3002`). No `.env.*` file is involved.
