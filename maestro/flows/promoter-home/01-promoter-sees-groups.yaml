@@ -1,17 +1,21 @@
 appId: com.musicians.app
 ---
-# Flow 01 of the promoter-home e2e journey (MUS-83, updated in MUS-97).
+# Flow 01 of the promoter-home e2e journey (MUS-83, updated MUS-97).
 # Entry state: fresh app launch, no one signed in.
+# Source of truth: seedE2E (runs against the musicians_test DB via /test/reset).
 # This flow exercises the PromoterHome screen's "My promoter groups" section:
-#   - Reset the test DB to the seedE2E fixture. As of MUS-97, seedE2E creates
-#     `promoter1` (password `password123`) with the promoter role linked to
-#     promoter group "Test Promotions" → venue "Test Hall".
+#   - Call /test/reset to seed the minimal fixture plus the promoter-home slice:
+#     user promoter1 (password123, promoter role), group "Test Promotions",
+#     venue "Test Hall" (1 Test Lane, Testville VIC 3000).
 #   - Log in as promoter1.
 #   - Switch context to "Promoter" via the app drawer.
 #   - Assert the "My promoter groups" section header is visible.
 #   - Assert "Test Promotions" (the seeded group name) is visible.
-#   - Assert "Test Hall" (the seeded venue linked to that group) is visible
-#     underneath the group row.
+#   - Assert "Test Hall" (the seeded venue linked to that group) is visible.
+
+# Reset the test DB to the seedE2E fixture before any UI interaction. This
+# includes the promoter-home slice added in MUS-97 (promoter1, Test Promotions,
+# Test Hall), so the flow is deterministic against pnpm e2e:server.
 - runFlow: ../../helpers/reset.yaml
 
 # Bring the app to the foreground in a known state. No clearState — that wipes
@@ -31,8 +35,8 @@ appId: com.musicians.app
       visible: "Open profile menu"
     file: ../../helpers/logout.yaml
 
-# Log in as the seeded promoter1 user (the only user in seedE2E who has the
-# promoter role and belongs to a promoter group).
+# Log in as the seeded promoter user (promoter1, inserted by seedE2E).
+# firstName is null so UserContext falls back to the username in the greeting.
 - assertVisible: "Sign in to continue"
 - tapOn:
     id: "login-username"
@@ -43,33 +47,32 @@ appId: com.musicians.app
 - tapOn:
     id: "login-submit"
 
-# After login the home screen renders the welcome heading for "promoter1".
-# UserContext renders the username when firstName is null.
+# After login the home screen renders the welcome heading. Because firstName is
+# null, UserContext uses the username as the display name.
 - assertVisible: "Hello promoter1"
 
 # The app defaults to "musician" context on login. Switch to "Promoter" via
-# the app drawer: tap the profile-menu button (face-smile-beam icon, top-right
-# of the Home screen), then tap the "Promoter" chip in the context picker.
+# the app drawer: tap the profile-menu button (top-right of the Home screen),
+# then tap the "Promoter" chip in the context picker.
 - tapOn:
     text: "Open profile menu"
 - tapOn: "Promoter"
 
-# After switching context the home screen should re-render in promoter mode.
-# Dismiss the drawer by tapping outside it (tap the Home tab label, which is
-# always visible above the drawer's touch-area).
+# Dismiss the drawer by tapping the Home tab label. The tab bar is above the
+# drawer's touch-area and is always reachable.
 - tapOn: "Home, tab.*"
 
 # Assert the "My promoter groups" section header is now visible. This testID is
-# present only when the user has one or more promoter groups, making it the
-# primary gate assertion for this AC.
+# present only when the user has one or more promoter groups (rendered by
+# PromoterHome, wired in MUS-83). It is the primary gate assertion for this AC.
 - assertVisible:
     id: "promoter-groups-section-header"
 
-# Assert the seeded group name is visible as text (preferred over testID — text
-# content is more resilient than DB-id suffixes which change if the seed order
-# changes).
+# Assert the seeded group name is visible as text. Text assertions are preferred
+# over testID when the content is a stable known-good string — they survive
+# minor layout refactors that change ID naming conventions.
 - assertVisible: "Test Promotions"
 
 # Assert the seeded venue linked to "Test Promotions" is visible underneath the
-# group row. Text assertion rather than id (same robustness reasoning above).
+# group row. Same text-over-id rationale as above.
 - assertVisible: "Test Hall"
