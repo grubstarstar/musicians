@@ -1,7 +1,14 @@
+import { useSuspenseQuery } from "@tanstack/react-query";
+import type { AppRouter } from "@musicians/shared";
+import type { inferRouterOutputs } from "@trpc/server";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { QueryBoundary } from "../QueryBoundary";
+import { trpc } from "../../trpc";
 import { EntityCard } from "./Card";
-import { CardRow } from "./CardRow";
 import { TimelineList } from "./TimelineList";
+
+type PromoterGroupRow =
+  inferRouterOutputs<AppRouter>["promoterGroups"]["listMine"][number];
 
 const BOOKING_REQUESTS = [
   { band: "The Skylarks", status: "awaiting" as const, color: "#6c63ff" },
@@ -16,32 +23,49 @@ const UPCOMING_SHOWS = [
 export function PromoterHome() {
   return (
     <ScrollView>
-      <CardRow title="Booking requests">
-        {BOOKING_REQUESTS.map((req) => (
-          <EntityCard key={req.band}>
-            <View style={[styles.thumbnail, { backgroundColor: req.color }]} />
-            <View style={styles.cardBody}>
-              <Text style={styles.cardTitle} numberOfLines={1}>
-                {req.band}
-              </Text>
-              <View
-                style={[
-                  styles.statusPill,
-                  req.status === "confirmed"
-                    ? styles.pillConfirmed
-                    : styles.pillAwaiting,
-                ]}
-              >
-                <Text style={styles.pillText}>
-                  {req.status === "confirmed" ? "Confirmed" : "Awaiting"}
-                </Text>
-              </View>
-            </View>
-          </EntityCard>
-        ))}
-      </CardRow>
+      <QueryBoundary>
+        <MyPromoterGroups />
+      </QueryBoundary>
 
-      <Text style={styles.sectionTitle}>Upcoming shows</Text>
+      <View style={styles.mockSection}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Booking requests</Text>
+          <MockPill />
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.mockScrollContent}
+        >
+          {BOOKING_REQUESTS.map((req) => (
+            <EntityCard key={req.band}>
+              <View style={[styles.thumbnail, { backgroundColor: req.color }]} />
+              <View style={styles.cardBody}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {req.band}
+                </Text>
+                <View
+                  style={[
+                    styles.statusPill,
+                    req.status === "confirmed"
+                      ? styles.pillConfirmed
+                      : styles.pillAwaiting,
+                  ]}
+                >
+                  <Text style={styles.pillText}>
+                    {req.status === "confirmed" ? "Confirmed" : "Awaiting"}
+                  </Text>
+                </View>
+              </View>
+            </EntityCard>
+          ))}
+        </ScrollView>
+      </View>
+
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>Upcoming shows</Text>
+        <MockPill />
+      </View>
       <TimelineList
         items={UPCOMING_SHOWS.map((show) => ({
           eventDatetime: show.datetime,
@@ -57,6 +81,87 @@ export function PromoterHome() {
   );
 }
 
+function MyPromoterGroups() {
+  const { data: groups } = useSuspenseQuery(
+    trpc.promoterGroups.listMine.queryOptions(),
+  );
+
+  if (groups.length === 0) {
+    return (
+      <View
+        style={styles.emptyStateWrap}
+        testID="promoter-groups-empty-state"
+      >
+        <View style={styles.emptyStateCard}>
+          <Text style={styles.emptyStateTitle}>
+            You're not part of any promoter groups yet
+          </Text>
+          <Text style={styles.emptyStateBody}>
+            Promoter groups let you team up on bookings and share venues.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.groupsWrap}>
+      <Text
+        style={styles.sectionTitle}
+        testID="promoter-groups-section-header"
+      >
+        My promoter groups
+      </Text>
+      <View style={styles.groupsList}>
+        {groups.map((group, i) => (
+          <PromoterGroupRowView
+            key={group.id}
+            group={group}
+            isLast={i === groups.length - 1}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function PromoterGroupRowView({
+  group,
+  isLast,
+}: {
+  group: PromoterGroupRow;
+  isLast: boolean;
+}) {
+  return (
+    <View
+      testID={`promoter-group-row-${group.id}`}
+      style={[styles.groupRow, !isLast && styles.groupRowBorder]}
+    >
+      <Text style={styles.groupName}>{group.name}</Text>
+      {group.venues.length === 0 ? (
+        <Text style={styles.venueEmpty}>No venues yet</Text>
+      ) : (
+        <View style={styles.venueList}>
+          {group.venues.map((venue) => (
+            <View key={venue.id} style={styles.venueRow}>
+              <Text style={styles.venueName}>{venue.name}</Text>
+              <Text style={styles.venueAddress}>{venue.address}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function MockPill() {
+  return (
+    <View style={styles.mockPill}>
+      <Text style={styles.mockPillText}>Mock data</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   sectionTitle: {
     color: "#fff",
@@ -64,6 +169,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 12,
     paddingHorizontal: 20,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingRight: 20,
   },
   thumbnail: { height: 80 },
   cardBody: { padding: 12 },
@@ -79,4 +190,72 @@ const styles = StyleSheet.create({
   pillConfirmed: { backgroundColor: "rgba(76, 175, 80, 0.2)" },
   pillAwaiting: { backgroundColor: "rgba(255, 152, 0, 0.2)" },
   pillText: { color: "#fff", fontSize: 11, fontWeight: "600" },
+  mockSection: { marginBottom: 28 },
+  mockScrollContent: {
+    paddingLeft: 20,
+    paddingRight: 12,
+  },
+  mockPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginBottom: 12,
+  },
+  mockPillText: {
+    color: "#7a7a85",
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  groupsWrap: { marginBottom: 28 },
+  groupsList: {
+    backgroundColor: "#1a1a1f",
+    borderRadius: 12,
+    overflow: "hidden",
+    marginHorizontal: 20,
+  },
+  groupRow: {
+    padding: 14,
+  },
+  groupRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#2a2a30",
+  },
+  groupName: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  venueList: { gap: 6 },
+  venueRow: {},
+  venueName: { color: "#fff", fontSize: 14, fontWeight: "500" },
+  venueAddress: { color: "#7a7a85", fontSize: 12, marginTop: 1 },
+  venueEmpty: {
+    color: "#7a7a85",
+    fontSize: 13,
+    fontStyle: "italic",
+  },
+  emptyStateWrap: {
+    paddingHorizontal: 20,
+    marginBottom: 28,
+  },
+  emptyStateCard: {
+    backgroundColor: "#1a1a1f",
+    borderRadius: 12,
+    padding: 16,
+  },
+  emptyStateTitle: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  emptyStateBody: {
+    color: "#7a7a85",
+    fontSize: 13,
+    lineHeight: 18,
+  },
 });
