@@ -4,7 +4,10 @@
 //
 // Verifies the contract the Maestro flows depend on:
 //   - POST /test/reset returns 200
-//   - the test DB ends up with exactly the gigtar / sesh / The Testers fixture
+//   - the test DB ends up with the seedE2E fixture (MUS-97 added the
+//     promoter-home slice: `promoter1`, promoter group "Test Promotions",
+//     venue "Test Hall", plus the request-to-join slice: `gigtar`, `sesh`,
+//     band "The Testers").
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const TEST_DB_URL =
@@ -53,7 +56,7 @@ describe.skipIf(skip)('POST /test/reset (integration)', () => {
     process.env.NODE_ENV = originalNodeEnv;
   });
 
-  it('truncates and reseeds to gigtar / sesh / The Testers', async () => {
+  it('truncates and reseeds to the seedE2E fixture', async () => {
     const res = await app.fetch(
       new Request('http://localhost/test/reset', { method: 'POST' }),
     );
@@ -61,16 +64,49 @@ describe.skipIf(skip)('POST /test/reset (integration)', () => {
 
     // Cross-check directly against the DB.
     const { db } = await import('../db.js');
-    const { bandMembers, bands, users } = await import('../schema.js');
+    const {
+      bandMembers,
+      bands,
+      promoterGroups,
+      promoterGroupsVenues,
+      promotersPromoterGroups,
+      userRoles,
+      users,
+      venues,
+    } = await import('../schema.js');
     const allUsers = await db.select({ username: users.username }).from(users);
     const allBands = await db.select({ name: bands.name }).from(bands);
     const memberships = await db
       .select({ band_id: bandMembers.band_id, user_id: bandMembers.user_id })
       .from(bandMembers);
+    const allPromoterGroups = await db
+      .select({ name: promoterGroups.name })
+      .from(promoterGroups);
+    const allVenues = await db.select({ name: venues.name }).from(venues);
+    const allRoles = await db
+      .select({ role: userRoles.role })
+      .from(userRoles);
+    const allPromoterLinks = await db
+      .select({ id: promotersPromoterGroups.id })
+      .from(promotersPromoterGroups);
+    const allPromoterGroupVenueLinks = await db
+      .select({ id: promoterGroupsVenues.id })
+      .from(promoterGroupsVenues);
 
-    expect(allUsers.map((u) => u.username).sort()).toEqual(['gigtar', 'sesh']);
+    expect(allUsers.map((u) => u.username).sort()).toEqual([
+      'gigtar',
+      'promoter1',
+      'sesh',
+    ]);
     expect(allBands.map((b) => b.name)).toEqual(['The Testers']);
+    // Only gigtar is in a band (sesh is intentionally bandless; promoter1 is
+    // a promoter and also not in any band).
     expect(memberships).toHaveLength(1);
+    expect(allPromoterGroups.map((g) => g.name)).toEqual(['Test Promotions']);
+    expect(allVenues.map((v) => v.name)).toEqual(['Test Hall']);
+    expect(allRoles.map((r) => r.role)).toEqual(['promoter']);
+    expect(allPromoterLinks).toHaveLength(1);
+    expect(allPromoterGroupVenueLinks).toHaveLength(1);
   });
 
   it('is idempotent — second reset still leaves the same fixture', async () => {
@@ -86,6 +122,10 @@ describe.skipIf(skip)('POST /test/reset (integration)', () => {
     const { db } = await import('../db.js');
     const { users } = await import('../schema.js');
     const allUsers = await db.select({ username: users.username }).from(users);
-    expect(allUsers.map((u) => u.username).sort()).toEqual(['gigtar', 'sesh']);
+    expect(allUsers.map((u) => u.username).sort()).toEqual([
+      'gigtar',
+      'promoter1',
+      'sesh',
+    ]);
   });
 });
