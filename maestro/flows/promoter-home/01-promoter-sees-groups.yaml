@@ -1,17 +1,18 @@
 appId: com.musicians.app
 ---
-# Flow 01 of the promoter-home e2e journey (MUS-83).
+# Flow 01 of the promoter-home e2e journey (MUS-83, updated in MUS-97).
 # Entry state: fresh app launch, no one signed in.
 # This flow exercises the PromoterHome screen's "My promoter groups" section:
-#   - Reset is skipped: /test/reset does NOT seed a promoter group, so we rely
-#     on the main seed (pnpm seed) which creates admin/password123 with the
-#     promoter role linked to "Sunset Presents" → "The Corner Stage".
-#   - Log in as admin (the seeded promoter user).
+#   - Reset the test DB to the seedE2E fixture. As of MUS-97, seedE2E creates
+#     `promoter1` (password `password123`) with the promoter role linked to
+#     promoter group "Test Promotions" → venue "Test Hall".
+#   - Log in as promoter1.
 #   - Switch context to "Promoter" via the app drawer.
 #   - Assert the "My promoter groups" section header is visible.
-#   - Assert "Sunset Presents" (the seeded group name) is visible.
-#   - Assert "The Corner Stage" (the seeded venue linked to that group) is
-#     visible underneath the group row.
+#   - Assert "Test Promotions" (the seeded group name) is visible.
+#   - Assert "Test Hall" (the seeded venue linked to that group) is visible
+#     underneath the group row.
+- runFlow: ../../helpers/reset.yaml
 
 # Bring the app to the foreground in a known state. No clearState — that wipes
 # the dev-client's saved server URL and drops us at the dev launcher instead of
@@ -30,21 +31,21 @@ appId: com.musicians.app
       visible: "Open profile menu"
     file: ../../helpers/logout.yaml
 
-# Log in as the seeded admin user (the only user in the main seed who has the
+# Log in as the seeded promoter1 user (the only user in seedE2E who has the
 # promoter role and belongs to a promoter group).
 - assertVisible: "Sign in to continue"
 - tapOn:
     id: "login-username"
-- inputText: "admin"
+- inputText: "promoter1"
 - tapOn:
     id: "login-password"
 - inputText: "password123"
 - tapOn:
     id: "login-submit"
 
-# After login the home screen renders the welcome heading for "admin".
+# After login the home screen renders the welcome heading for "promoter1".
 # UserContext renders the username when firstName is null.
-- assertVisible: "Hello admin"
+- assertVisible: "Hello promoter1"
 
 # The app defaults to "musician" context on login. Switch to "Promoter" via
 # the app drawer: tap the profile-menu button (face-smile-beam icon, top-right
@@ -67,8 +68,8 @@ appId: com.musicians.app
 # Assert the seeded group name is visible as text (preferred over testID — text
 # content is more resilient than DB-id suffixes which change if the seed order
 # changes).
-- assertVisible: "Sunset Presents"
+- assertVisible: "Test Promotions"
 
-# Assert the seeded venue linked to "Sunset Presents" is visible underneath the
+# Assert the seeded venue linked to "Test Promotions" is visible underneath the
 # group row. Text assertion rather than id (same robustness reasoning above).
-- assertVisible: "The Corner Stage"
+- assertVisible: "Test Hall"
