@@ -1,0 +1,74 @@
+appId: com.musicians.app
+---
+# Flow 01 of the promoter-home e2e journey (MUS-83).
+# Entry state: fresh app launch, no one signed in.
+# This flow exercises the PromoterHome screen's "My promoter groups" section:
+#   - Reset is skipped: /test/reset does NOT seed a promoter group, so we rely
+#     on the main seed (pnpm seed) which creates admin/password123 with the
+#     promoter role linked to "Sunset Presents" → "The Corner Stage".
+#   - Log in as admin (the seeded promoter user).
+#   - Switch context to "Promoter" via the app drawer.
+#   - Assert the "My promoter groups" section header is visible.
+#   - Assert "Sunset Presents" (the seeded group name) is visible.
+#   - Assert "The Corner Stage" (the seeded venue linked to that group) is
+#     visible underneath the group row.
+
+# Bring the app to the foreground in a known state. No clearState — that wipes
+# the dev-client's saved server URL and drops us at the dev launcher instead of
+# the app.
+- launchApp
+
+# Cold bundle fetch can take 20-40s on a sandboxed simulator. Wait explicitly
+# before interacting with the login screen.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# If a previous run left someone signed in, log them out so we start clean.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# Log in as the seeded admin user (the only user in the main seed who has the
+# promoter role and belongs to a promoter group).
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "admin"
+- tapOn:
+    id: "login-password"
+- inputText: "password123"
+- tapOn:
+    id: "login-submit"
+
+# After login the home screen renders the welcome heading for "admin".
+# UserContext renders the username when firstName is null.
+- assertVisible: "Hello admin"
+
+# The app defaults to "musician" context on login. Switch to "Promoter" via
+# the app drawer: tap the profile-menu button (face-smile-beam icon, top-right
+# of the Home screen), then tap the "Promoter" chip in the context picker.
+- tapOn:
+    text: "Open profile menu"
+- tapOn: "Promoter"
+
+# After switching context the home screen should re-render in promoter mode.
+# Dismiss the drawer by tapping outside it (tap the Home tab label, which is
+# always visible above the drawer's touch-area).
+- tapOn: "Home, tab.*"
+
+# Assert the "My promoter groups" section header is now visible. This testID is
+# present only when the user has one or more promoter groups, making it the
+# primary gate assertion for this AC.
+- assertVisible:
+    id: "promoter-groups-section-header"
+
+# Assert the seeded group name is visible as text (preferred over testID — text
+# content is more resilient than DB-id suffixes which change if the seed order
+# changes).
+- assertVisible: "Sunset Presents"
+
+# Assert the seeded venue linked to "Sunset Presents" is visible underneath the
+# group row. Text assertion rather than id (same robustness reasoning above).
+- assertVisible: "The Corner Stage"
