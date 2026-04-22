@@ -20,7 +20,7 @@
     "db:psql": "docker exec -it musicians-postgres psql -U postgres -d musicians",
     "e2e:db-setup": "pnpm --filter @musicians/server e2e:db-setup",
     "e2e:server": "pnpm --filter @musicians/server e2e:server",
-    "e2e:mobile": "NODE_ENV=test pnpm --filter @musicians/mobile e2e:start",
+    "e2e:mobile": "EXPO_PUBLIC_API_URL=http://localhost:3002 pnpm --filter @musicians/mobile e2e:start",
     "e2e:build-app": "bash scripts/e2e-build-app.sh",
     "e2e:setup-sim": "bash scripts/e2e-sim-setup.sh",
     "e2e:run": "bash scripts/e2e-run.sh"

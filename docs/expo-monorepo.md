@@ -317,6 +317,18 @@ curl http://localhost:3001/trpc/system.ping
 ```
 Expect `{"result":{"data":{"ok":true,"at":"..."}}}`. If that works but the mobile app can't reach it, the problem is the URL the device is resolving, not the server.
 
+**Maestro e2e (test server on port 3002)** — `pnpm e2e:mobile` exports
+`EXPO_PUBLIC_API_URL=http://localhost:3002` so the bundled app routes
+tRPC and auth calls to the dedicated e2e server started by
+`pnpm e2e:server` against the `musicians_test` database. `EXPO_PUBLIC_API_URL`
+is the single knob for switching between the main dev server (`:3001`,
+the fallback in `trpc.ts`) and the e2e test server (`:3002`) — no
+`.env.*` files or `NODE_ENV` override involved. The e2e script
+deliberately does not set `NODE_ENV=test`, because that makes the
+`expo-router` babel plugin skip inlining `process.env.EXPO_ROUTER_APP_ROOT`
+into the bundle and the app crashes on launch with a `require.context`
+error (MUS-98).
+
 ## Auth (bearer token from login screen)
 
 Most tRPC procedures — including `bands.list` and `bands.getById` — are `protectedProcedure` and require a JWT. The mobile app presents a login screen on first launch, stores the resulting token in `expo-secure-store` (iOS Keychain / Android Keystore), and attaches it as `Authorization: Bearer <token>` to every tRPC request.
