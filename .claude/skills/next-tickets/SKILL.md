@@ -3,7 +3,7 @@ name: next-tickets
 description: Pick one or more tickets from the Jira backlog and work them end-to-end. Accepts ticket IDs as arguments (e.g. /next-tickets MUS-1 MUS-2). If no IDs are given, picks the top ticket from Ready for Development (falling back to To Do if that column is empty). Multiple IDs are run in parallel where dependencies allow.
 ---
 
-You are the orchestrator for one or more tickets through the full dev → qa-automate → code review → QA pipeline.
+You are the orchestrator for one or more tickets through the full dev → qa-automate → qa-test → code review → QA pipeline.
 
 ## Jira
 
@@ -45,14 +45,14 @@ Don't ask "should I correct this?" as a binary — propose the correction so the
 
 ## Step 2 — Run the pipeline
 
-For each ticket, run: **dev → qa-automate → combine → code review → QA → merge** in sequence. Tickets with no unmet dependencies start immediately; blocked tickets wait.
+For each ticket, run: **dev → qa-automate → combine → qa-test → code review → QA → merge** in sequence. Tickets with no unmet dependencies start immediately; blocked tickets wait.
 
 ### Parallelism rules
 
 - If multiple tickets are unblocked, spawn their **dev** agents in a **single message with multiple `Agent` tool calls** — that's what triggers concurrent execution. Sequential calls run sequentially.
 - Do NOT start a ticket's dev work until all tickets it depends on have reached **Done** status.
 - Check Jira for the blocking ticket's status before proceeding.
-- QA runs are **serial across tickets** — the simulator is a shared resource. Do not attempt to run `pnpm e2e:run` for two tickets concurrently.
+- **qa-test runs are serial across tickets** — the `MaestroTest` simulator is a shared resource. Do not spawn two qa-test agents concurrently. If two tickets both reach the qa-test step at once, run them back-to-back.
 
 ### Per-ticket pipeline
 
@@ -104,7 +104,28 @@ The `--no-ff` keeps each agent's commits grouped under a merge commit, so the fe
 
 **If a merge conflict appears** (rare — only when dev and qa-automate touch the same file), **stop and surface to the user**. Report the conflicting file(s) and the conflict markers inline. Do not attempt to auto-resolve. The user will either resolve by hand or re-spawn one of the agents with tighter scoping.
 
-#### 2d. Code Review (against the feature branch)
+#### 2d. qa-test (skipped if `no-e2e`)
+
+**Skip this sub-step entirely if the ticket has the `no-e2e` label.** There are no flows to run; move straight to code-review.
+
+Otherwise, spawn a **qa-test** subagent. Use the `Agent` tool with these settings:
+
+- `subagent_type: "qa-test"` — resolves to `.claude/agents/qa-test.md`
+- `isolation: "worktree"` — the harness creates the worktree on the feature branch so qa-test runs the combined dev + qa-automate code.
+- `run_in_background: true` — frees the orchestrator; you'll get a notification when it completes.
+- `prompt:` — ticket ID only. The agent fetches the Jira description and the journey path itself. Also mention the feature branch name so the agent is oriented (e.g. "feature/MUS-NN-short-description is the combined branch").
+- `description:` — short ("MUS-XX qa-test").
+
+qa-test posts a structured result to Jira and returns one of four outcomes in its final message:
+
+- **pass** → continue to step 2e (code-review). Ticket stays in Code Review status.
+- **fail (flow bug)** → qa-test has already transitioned the ticket back to **Doing** and posted a failure comment. Re-spawn `qa-automate` on its original branch; after it commits a fix, re-run combine + qa-test. Do NOT run code-review yet.
+- **fail (app bug)** → qa-test has already transitioned to **Doing**. Re-spawn `dev` on its original branch; after its fix, re-combine + re-run qa-test. Do NOT run code-review yet.
+- **fail (prereq)** or **skipped (prereq)** → qa-test could not run. Surface the named prereq to the user (missing cached app, maestro not installed, etc.) and halt the ticket until the user clears it. No Jira transition.
+
+Maximum 3 qa-test cycles before escalating to the user.
+
+#### 2e. Code Review (against the feature branch)
 
 Spawn a **code-review** subagent. Use the `Agent` tool with these settings:
 
@@ -116,22 +137,14 @@ Spawn a **code-review** subagent. Use the `Agent` tool with these settings:
 
 Outcomes:
 
-- **Approves** → transition the ticket to **QA** (transition id `4`). Continue to step 2e.
-- **Requests changes** → transition the ticket back to **Doing** (transition id `21`); re-spawn dev (and/or qa-automate if flow issues were raised) on their original branches to address the feedback, then re-run combine + code review. Keep the feature branch — delete it and recreate if dev's branch was reset, otherwise fast-forward the additional fix commits onto it.
+- **Approves** → transition the ticket to **QA** (transition id `4`). Continue to step 2f.
+- **Requests changes** → transition the ticket back to **Doing** (transition id `21`); re-spawn dev (and/or qa-automate if flow issues were raised) on their original branches to address the feedback, then re-run combine + qa-test + code review. Keep the feature branch — delete it and recreate if dev's branch was reset, otherwise fast-forward the additional fix commits onto it.
 
 Maximum 3 review cycles before escalating to the user.
 
-#### 2e. QA gate
+#### 2f. QA gate
 
-The ticket is now in **QA** status on the feature branch.
-
-- **Ticket has `no-e2e` label**: skip the manual QA run. Transition straight to **Done** (transition id `31`) and proceed to Step 3 (merge).
-- **Ticket does not have `no-e2e`**: prompt the user inline to run `pnpm e2e:run` on the feature branch and report the result. Until the future `qa-test` agent lands, this step is manual.
-  - **Green** → transition the ticket to **Done** (transition id `31`) and proceed to Step 3.
-  - **Red** → transition the ticket back to **Doing** (transition id `21`) with the failure summary as a Jira comment. Decide which agent to re-spawn:
-    - Flow bug (selector, wrong assertion, test-only issue) → re-spawn `qa-automate` on its branch.
-    - App bug (feature doesn't do what the AC said) → re-spawn `dev` on its branch.
-    - Both → re-spawn both, then re-combine + re-review + re-QA.
+The ticket is now in **QA** status on the feature branch. Because qa-test already ran the Maestro flows in step 2d (or was skipped for `no-e2e`), the QA column is now an automated pass-through: transition straight to **Done** (transition id `31`) and proceed to Step 3 (merge). No manual `pnpm e2e:run` required.
 
 ## Step 3 — Merge and cleanup
 
@@ -167,7 +180,7 @@ When the ticket reaches **Done**:
    ```
    Standing inside a worktree you're removing leaves the shell with an invalid cwd — subsequent commands fail with "Unable to read current working directory".
 
-3. **Report:** what was built, how many review cycles, whether code review passed first time, whether QA passed first time (or was skipped via `no-e2e`).
+3. **Report:** what was built, how many review cycles, how many qa-test cycles, whether code review passed first time, whether qa-test passed first time (or was skipped via `no-e2e`).
 
 ## Example execution plan
 
@@ -180,11 +193,10 @@ Execution:
   t=0   MUS-1 dev starts (parallel — single message, two Agent tool calls)
   t=0   MUS-2 dev starts (parallel)
   t=1   MUS-1 dev done → MUS-1 qa-automate starts
-  t=1   MUS-2 dev done → (no-e2e, skip qa-automate) → combine → code review
-  t=2   MUS-1 qa-automate done → combine (feature/MUS-1-short-description) → code review
-  t=2   MUS-2 review approved → QA (no-e2e, auto) → Done → ff-merge + cleanup
-  t=3   MUS-1 review approved → QA (user runs pnpm e2e:run, reports green)
-        → Done → ff-merge + cleanup
+  t=1   MUS-2 dev done → (no-e2e, skip qa-automate + qa-test) → combine → code review
+  t=2   MUS-1 qa-automate done → combine (feature/MUS-1-short-description) → qa-test
+  t=2   MUS-2 review approved → QA (auto) → Done → ff-merge + cleanup
+  t=3   MUS-1 qa-test PASS → code review approved → QA (auto) → Done → ff-merge + cleanup
         MUS-3 dependency resolved → MUS-3 dev starts
   ...
 ```

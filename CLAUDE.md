@@ -108,17 +108,20 @@ Both loops exist: Code Review → Doing (nit from review) and QA → Doing (flow
 When filing tickets via `mcp__mcp-atlassian__*`: the markdown→ADF converter mangles fenced code blocks nested inside list items (underscores become italic, escapes leak). Always hoist code/YAML blocks out of lists, and wrap inline identifiers in backticks rather than relying on `*emphasis*`.
 
 Available skills (project-scoped in `.claude/skills/`):
-- `/next-tickets` — picks one or more tickets from Ready for Development and runs the full dev → code-review pipeline (parallel where dependencies allow)
+- `/next-tickets` — picks one or more tickets from Ready for Development and runs the full dev → qa-automate → qa-test → code-review pipeline (parallel where dependencies allow)
 
 Available global skills you may also invoke from chat:
 - `/dev`, `/code-review`, `/smoke-test`, `/unit-test`, `/qa`, `/write-a-prd`
 
 ## Agent pipeline conventions
-- Spawn `dev`, `qa-automate`, and `code-review` subagents via the `Agent` tool with `subagent_type: "dev"` / `"qa-automate"` / `"code-review"`. All three belong to this project at `.claude/agents/`.
-- For `dev` and `qa-automate`: always pass `isolation: "worktree"` (the harness manages the worktree — never pre-create one yourself, see Gotchas) and `run_in_background: true` (frees the orchestrator).
+- Pipeline order per ticket: **dev → qa-automate → combine → qa-test → code-review → QA (auto) → Done**. Tickets with the `no-e2e` label skip qa-automate and qa-test.
+- Spawn `dev`, `qa-automate`, `qa-test`, and `code-review` subagents via the `Agent` tool with `subagent_type: "dev"` / `"qa-automate"` / `"qa-test"` / `"code-review"`. All four belong to this project at `.claude/agents/`.
+- For `dev`, `qa-automate`, and `qa-test`: always pass `isolation: "worktree"` (the harness manages the worktree — never pre-create one yourself, see Gotchas) and `run_in_background: true` (frees the orchestrator). `qa-test` is spawned from the combined feature branch so it runs the merged dev + qa-automate code.
 - For `code-review`: `run_in_background: true`; no `isolation: "worktree"` needed (read-only).
-- Model selection: `dev` and `qa-automate` run on Sonnet; `code-review` runs on Opus. The agent files declare this in their frontmatter (`model:`). You can override via the `Agent` tool's `model` parameter if needed, but the defaults are load-bearing — `qa-automate` is mechanical Jira→YAML pattern-matching, `code-review` does the deep reasoning.
+- Model selection: `dev`, `qa-automate`, and `qa-test` run on Sonnet; `code-review` runs on Opus. The agent files declare this in their frontmatter (`model:`). You can override via the `Agent` tool's `model` parameter if needed, but the defaults are load-bearing — `qa-automate` is mechanical Jira→YAML pattern-matching, `qa-test` is run-and-report, `code-review` does the deep reasoning.
 - `qa-automate` takes the ticket's Jira description + AC + dev's `## HANDOFF` block as its input. It MUST NOT be given dev's diff or source files — see `.claude/agents/qa-automate.md` for the blind-to-dev rule.
+- `qa-test` takes the ticket ID only. It resolves the journey from the `## E2E coverage` block in the Jira description, runs `scripts/e2e-run.sh maestro/flows/<journey>`, posts a pass/fail comment to Jira, and on failure transitions the ticket back to Doing with a categorised reason (flow bug / app bug / prereq). It is read-only on app source and never commits.
+- qa-test runs are **serial across tickets** — the `MaestroTest` simulator is a shared singleton. Do not spawn two qa-test agents concurrently.
 - When pulling a non-trivial ticket (schema changes, new domain concepts, modelling ambiguity), draft any clarifying corrections in chat first, get user OK, then `jira_update_issue`, then spawn dev. Avoids mid-pipeline rewriting.
 
 ## MCP servers
