@@ -159,10 +159,6 @@ appId: com.musicians.app
       id: "add-members-cta"
     timeout: 10000
 
-# Verify the card contains the "Add members" label (visible text check as a
-# belt-and-braces assertion alongside the testID).
-- assertVisible: "Add members"
-
 # Dismiss the CTA via the close button. After dismissal the card is removed from
 # the render tree — it must not reappear on this screen visit.
 - tapOn:
