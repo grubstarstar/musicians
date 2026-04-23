@@ -1,0 +1,98 @@
+appId: com.musicians.app
+---
+# Flow 01 of the onboarding e2e journey (MUS-99).
+# Entry state: fresh app launch, no one signed in (reset.yaml is called first).
+# This flow exercises the minimal signup screen:
+#   - Reset the test DB so we start with the seedE2E fixture (gigtar, sesh,
+#     promoter1, The Testers, Test Promotions, Test Hall) and no leftover
+#     signup-test accounts.
+#   - Confirm the app opens on the login screen.
+#   - Tap the login-to-signup-link ("New here? Create an account") to navigate
+#     to the signup screen.
+#   - Assert the signup screen is visible (signup-username field present).
+#   - Confirm submit is disabled before filling the form (noop tap).
+#   - Enter a fresh username that does not collide with any seedE2E user.
+#   - Enter a password of exactly 8 characters (minimum required).
+#   - Tap signup-submit (now enabled) to register.
+#   - Assert the app reaches the post-auth home screen ("Hello <username>").
+
+# Reset the test DB to the seedE2E fixture before any UI interaction.
+# This wipes any leftover account from a previous run and reseeds the known
+# fixture, so the signup username ("newbie") will not already exist.
+- runFlow: ../../helpers/reset.yaml
+
+# Bring the app to the foreground in a known state. No clearState — that wipes
+# the dev-client's saved server URL and drops us at the dev launcher screen
+# instead of the app.
+- launchApp
+
+# Cold bundle fetch can take 20-40s on a sandboxed simulator. Wait explicitly
+# before interacting with the login screen.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# If a previous run left a user signed in, log them out so we always start
+# the flow from the login screen.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# Confirm we are on the login screen before proceeding.
+- assertVisible: "Sign in to continue"
+
+# Tap the link at the bottom of the login screen that navigates to signup.
+# testID used instead of visible text because the link is wrapped in a
+# Pressable (the testID lands on the Pressable target) and the exact label
+# text ("New here? Create an account") spans two elements in RN.
+- tapOn:
+    id: "login-to-signup-link"
+
+# Confirm the signup screen is now showing by checking for the username field.
+# This is the most specific stable anchor: the field is always visible above
+# the fold on this short form.
+- assertVisible:
+    id: "signup-username"
+
+# Verify client-side validation: tapping submit before any input does nothing.
+# The button is disabled until trimmed username is non-empty AND password >= 8
+# chars. A tap on a disabled Pressable is a no-op; the screen stays unchanged.
+- tapOn:
+    id: "signup-submit"
+- assertVisible:
+    id: "signup-username"
+
+# Enter a fresh username that does not collide with any seedE2E fixture user
+# (gigtar / sesh / promoter1). "newbie" is safe — reset.yaml truncates all
+# non-fixture users before each run.
+- tapOn:
+    id: "signup-username"
+- inputText: "newbie"
+
+# Dismiss the keyboard by tapping the label above the field. `hideKeyboard`
+# is unreliable on React Native inputs — tap a non-interactive element instead
+# (Maestro's recommended workaround).
+- tapOn: "USERNAME"
+
+# Enter the password. The field renders with secureTextEntry=true (dots, no
+# visible text). 8 characters is the minimum enforced server-side and reflected
+# in the client-side submit guard. Use exactly 8 to exercise the boundary.
+- tapOn:
+    id: "signup-password"
+- inputText: "abcd1234"
+
+# Dismiss the keyboard again before tapping submit.
+- tapOn: "PASSWORD"
+
+# Submit the form. signup-submit is now enabled (username non-empty, password
+# >= 8 chars) so the tap fires the register request. No scroll needed — the
+# submit button is visible on this short form without scrolling.
+- tapOn:
+    id: "signup-submit"
+
+# After a successful signup the AuthContext flips to authenticated and Expo
+# Router renders the (app) group. The home screen shows "Hello <username>".
+# UserContext uses the username (lowercase) because firstName is null on a
+# freshly created account.
+- assertVisible: "Hello newbie"
