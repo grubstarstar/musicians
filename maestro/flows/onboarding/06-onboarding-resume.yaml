@@ -27,7 +27,14 @@ appId: com.musicians.app
 # only, onboardprom=promoter only, onboarddone=musician+band).
 - runFlow: ../../helpers/reset.yaml
 
-- launchApp
+# clearKeychain wipes SecureStore-backed auth tokens so any surviving session
+# from a prior flow (e.g. promoter1 from flow 05) does not auto-authenticate
+# into home. Without this, AuthContext re-hydrates the stale token, the
+# server still accepts it (JWT not invalidated), and the app lands on home
+# — "Sign in to continue" never appears. clearKeychain does NOT wipe the
+# dev-client's saved server URL, so the Metro bundle URL survives.
+- launchApp:
+    clearKeychain: true
 
 # Wait for the cold-start bundle. The sim has already launched the app; a
 # fresh JS bundle fetch can take 20-40s before the login screen appears.
@@ -65,7 +72,8 @@ appId: com.musicians.app
 # the login screen by relaunching (stopApp is the default, so this stops and
 # restarts the app, clearing the in-memory navigation state while preserving
 # the server URL in AsyncStorage).
-- launchApp
+- launchApp:
+    clearKeychain: true
 
 - extendedWaitUntil:
     visible: "Sign in to continue"
@@ -90,7 +98,8 @@ appId: com.musicians.app
 # Assert the step-2 heading for a musician.
 - assertVisible: "You're a musician"
 
-- launchApp
+- launchApp:
+    clearKeychain: true
 
 - extendedWaitUntil:
     visible: "Sign in to continue"
@@ -114,7 +123,8 @@ appId: com.musicians.app
 # promoter_group_join request → redirects to promoter step-2.
 - assertVisible: "You're a promoter"
 
-- launchApp
+- launchApp:
+    clearKeychain: true
 
 - extendedWaitUntil:
     visible: "Sign in to continue"
@@ -151,7 +161,8 @@ appId: com.musicians.app
 # again on any device."
 # ─────────────────────────────────────────────────────────────────────────────
 
-- launchApp
+- launchApp:
+    clearKeychain: true
 
 - extendedWaitUntil:
     visible: "Sign in to continue"
