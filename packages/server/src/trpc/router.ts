@@ -14,6 +14,7 @@ import {
   getMusicianProfile,
   upsertMusicianProfile,
 } from '../musicianProfiles/queries.js';
+import { getPromoterGroupDetail } from '../promoterGroups/getPromoterGroupDetail.js';
 import { listMyPromoterGroups } from '../promoterGroups/queries.js';
 import { getUpcomingRehearsalsForBand } from '../rehearsals/queries.js';
 import {
@@ -90,6 +91,23 @@ export const appRouter = router({
       const userId = Number(ctx.user.id);
       return listMyPromoterGroups(userId);
     }),
+    // Detail view for a single promoter group (MUS-100). Returns the group's
+    // venues + members. Non-members get NOT_FOUND — same shape as `bands.getById`
+    // and the MUS-58 / MUS-70 pattern, so membership can't be fingerprinted
+    // from a distinct FORBIDDEN vs NOT_FOUND response.
+    get: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        const detail = await getPromoterGroupDetail(userId, input.id);
+        if (!detail) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Promoter group not found',
+          });
+        }
+        return detail;
+      }),
   }),
   // Musician profiles (MUS-85). Per-user musician data kept in `musician_profiles`
   // as a 1:1 companion to `users`. `get` is public so future discovery UIs can

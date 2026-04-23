@@ -1,7 +1,8 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import type { AppRouter } from "@musicians/shared";
 import type { inferRouterOutputs } from "@trpc/server";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { QueryBoundary } from "../QueryBoundary";
 import { trpc } from "../../trpc";
 import { EntityCard } from "./Card";
@@ -132,10 +133,23 @@ function PromoterGroupRowView({
   group: PromoterGroupRow;
   isLast: boolean;
 }) {
+  const router = useRouter();
   return (
-    <View
+    // MUS-100: the row is now the affordance into the group detail screen.
+    // The testID is preserved on the Pressable so the MUS-97 flow (which
+    // asserts the row's visibility) keeps working, and the MUS-100 flow taps
+    // the same id to navigate. `router.push` (not `navigate`) so the back
+    // gesture returns to PromoterHome without replacing history.
+    <Pressable
       testID={`promoter-group-row-${group.id}`}
-      style={[styles.groupRow, !isLast && styles.groupRowBorder]}
+      onPress={() => router.push(`/promoter-group/${group.id}`)}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${group.name}`}
+      style={({ pressed }) => [
+        styles.groupRow,
+        !isLast && styles.groupRowBorder,
+        pressed && styles.groupRowPressed,
+      ]}
     >
       <Text style={styles.groupName}>{group.name}</Text>
       {group.venues.length === 0 ? (
@@ -150,7 +164,7 @@ function PromoterGroupRowView({
           ))}
         </View>
       )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -223,6 +237,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#2a2a30",
   },
+  groupRowPressed: { opacity: 0.6 },
   groupName: {
     color: "#fff",
     fontSize: 16,
