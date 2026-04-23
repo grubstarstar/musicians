@@ -56,16 +56,19 @@ appId: com.musicians.app
 - tapOn: "Home, tab.*"
 
 # Verify PromoterHome is showing the seeded group before tapping into it.
+# The row is a Pressable with accessibilityLabel="Open <group name>"; that
+# label absorbs the child <Text> into one a11y element, so the matchable
+# string on the row is "Open Test Promotions" rather than "Test Promotions".
 - assertVisible:
     id: "promoter-groups-section-header"
-- assertVisible: "Test Promotions"
+- assertVisible: "Open Test Promotions"
 
-# Tap the "Test Promotions" row to navigate to the detail screen. The row is
-# a Pressable wrapping the group name text — tapping the visible text activates
-# it. Visible-text selector is preferred over testID (which embeds a numeric DB
-# id unknowable at flow-write time). There is exactly one group in the seedE2E
-# fixture so the match is unambiguous.
-- tapOn: "Test Promotions"
+# Tap the "Test Promotions" row to navigate to the detail screen. We select
+# by the row's accessibilityLabel ("Open <group name>") — the testID embeds
+# a numeric DB id unknowable at flow-write time, and the accessibilityLabel
+# is the text Maestro actually sees on the Pressable. There is exactly one
+# group in the seedE2E fixture so the match is unambiguous.
+- tapOn: "Open Test Promotions"
 
 # Assert the detail screen header shows the group name. Uses testID because the
 # same text "Test Promotions" may still be visible in a cached list behind the

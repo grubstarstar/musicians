@@ -68,10 +68,11 @@ appId: com.musicians.app
 - assertVisible:
     id: "promoter-groups-section-header"
 
-# Assert the seeded group name is visible as text. Text assertions are preferred
-# over testID when the content is a stable known-good string — they survive
-# minor layout refactors that change ID naming conventions.
-- assertVisible: "Test Promotions"
+# Assert the seeded group name is visible. The row is a Pressable with
+# accessibilityLabel="Open <group name>" (MUS-100) — that label absorbs the
+# child <Text> into one a11y element, so the matchable string on the row is
+# "Open Test Promotions" rather than "Test Promotions".
+- assertVisible: "Open Test Promotions"
 
 # Assert the seeded venue linked to "Test Promotions" is visible underneath the
 # group row. Same text-over-id rationale as above.
