@@ -92,8 +92,9 @@ appId: com.musicians.app
 - tapOn:
     id: "signup-submit"
 
-# After a successful signup the AuthContext flips to authenticated and Expo
-# Router renders the (app) group. The home screen shows "Hello <username>".
-# UserContext uses the username (lowercase) because firstName is null on a
-# freshly created account.
-- assertVisible: "Hello newbie"
+# After a successful signup the signup screen hands off to the onboarding
+# wizard (MUS-89). The role-picker is the first step — the app is now
+# "authenticated but not onboarded", so instead of the home screen the user
+# lands on `/onboarding/role-picker`. The title is the most stable anchor
+# (the radio tiles below are targeted by testID in the follow-on flow).
+- assertVisible: "What brings you here?"

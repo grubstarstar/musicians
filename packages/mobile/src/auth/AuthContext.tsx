@@ -20,6 +20,11 @@ import { setUnauthorizedHandler } from "./unauthorizedHandler";
 
 export interface AuthUser {
   username: string;
+  // MUS-89: roles surfaced to the client so the (app) auth gate can bounce
+  // unroled users (signup just ran, no role picked yet) into the onboarding
+  // wizard on cold launch. Populated from the login/register response bodies
+  // and `/api/auth/me`, all of which already return the `roles` array.
+  roles: string[];
 }
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -38,17 +43,20 @@ const AuthContextCtx = createContext<AuthContextValue | null>(null);
 interface LoginResponse {
   username?: string;
   token?: string;
+  roles?: string[];
   error?: string;
 }
 
 interface RegisterResponse {
   username?: string;
   token?: string;
+  roles?: string[];
   error?: string;
 }
 
 interface MeResponse {
   username?: string;
+  roles?: string[];
   error?: string;
 }
 
@@ -61,7 +69,7 @@ async function requestLogin(
   apiUrl: string,
   username: string,
   password: string,
-): Promise<{ token: string; username: string }> {
+): Promise<{ token: string; username: string; roles: string[] }> {
   const res = await fetch(`${apiUrl}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -74,7 +82,13 @@ async function requestLogin(
   if (!body.token || !body.username) {
     throw new Error("Login response was missing token or username");
   }
-  return { token: body.token, username: body.username };
+  // `roles` absent in an older server build shouldn't block auth; default to
+  // an empty array which routes the caller into the onboarding wizard anyway.
+  return {
+    token: body.token,
+    username: body.username,
+    roles: body.roles ?? [],
+  };
 }
 
 /**
@@ -86,7 +100,7 @@ async function requestRegister(
   apiUrl: string,
   username: string,
   password: string,
-): Promise<{ token: string; username: string }> {
+): Promise<{ token: string; username: string; roles: string[] }> {
   const res = await fetch(`${apiUrl}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -99,21 +113,33 @@ async function requestRegister(
   if (!body.token || !body.username) {
     throw new Error("Signup response was missing token or username");
   }
-  return { token: body.token, username: body.username };
+  // Fresh registrations always come back with `roles: []`; default to the
+  // same shape defensively if the key is ever missing.
+  return {
+    token: body.token,
+    username: body.username,
+    roles: body.roles ?? [],
+  };
 }
 
 /**
- * Validates a stored token against the server. Returns the username when
- * still valid; null if the token is expired/revoked/invalid.
+ * Validates a stored token against the server. Returns `{ username, roles }`
+ * when still valid; null if the token is expired/revoked/invalid. Roles are
+ * needed on cold launch (MUS-89) so the auth gate can bounce unroled users
+ * into the onboarding wizard instead of landing them on Home.
  */
-async function fetchMe(apiUrl: string, token: string): Promise<string | null> {
+async function fetchMe(
+  apiUrl: string,
+  token: string,
+): Promise<{ username: string; roles: string[] } | null> {
   try {
     const res = await fetch(`${apiUrl}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
     const body = (await res.json()) as MeResponse;
-    return body.username ?? null;
+    if (!body.username) return null;
+    return { username: body.username, roles: body.roles ?? [] };
   } catch {
     return null;
   }
@@ -171,9 +197,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // against the authed state (unlikely but possible with Suspense) goes
       // out with the right header.
       setAuthToken(stored);
-      const username = await fetchMe(API_URL, stored);
+      const me = await fetchMe(API_URL, stored);
       if (cancelled) return;
-      if (!username) {
+      if (!me) {
         // Token expired or revoked — clear it silently.
         setAuthToken(null);
         await clearStoredToken();
@@ -181,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       setTokenState(stored);
-      setUser({ username });
+      setUser({ username: me.username, roles: me.roles });
       setStatus("authenticated");
     })();
     return () => {
@@ -195,7 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await storeToken(result.token);
       setAuthToken(result.token);
       setTokenState(result.token);
-      setUser({ username: result.username });
+      setUser({ username: result.username, roles: result.roles });
       setStatus("authenticated");
     },
     [],
@@ -210,7 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await storeToken(result.token);
       setAuthToken(result.token);
       setTokenState(result.token);
-      setUser({ username: result.username });
+      setUser({ username: result.username, roles: result.roles });
       setStatus("authenticated");
     },
     [],

@@ -1,0 +1,57 @@
+appId: com.musicians.app
+---
+# Flow 02 of the onboarding e2e journey (MUS-89).
+# Entry state: flow 01 (01-signup.yaml) has run — "newbie" is signed in and
+# the app is sitting on the role-picker screen ("What brings you here?").
+# This flow exercises the musician path through the role-picker:
+#   - Assert the role-picker screen is visible.
+#   - Verify Next is disabled before a role is selected.
+#   - Tap "As a musician" tile.
+#   - Verify Next is now enabled.
+#   - Tap Next and assert the app navigates to the musician step-2 screen.
+
+# Re-launch the app so we start from a stable foreground state.
+# No clearState — that wipes the dev-client's saved server URL.
+- launchApp
+
+# Wait for the role-picker screen. After signup, Expo Router replaces the route
+# to /onboarding/role-picker. The title "What brings you here?" is the most
+# stable text anchor on this screen.
+- extendedWaitUntil:
+    visible: "What brings you here?"
+    timeout: 30000
+
+# Belt-and-braces: confirm we are definitely on the role-picker, not some other
+# screen that might coincidentally contain similar text.
+- assertVisible:
+    id: "onboarding-role-picker"
+
+# Verify client-side guard: Next must be disabled before any tile is selected.
+# A tap on a disabled Pressable is a no-op, so the screen should remain on the
+# role-picker after this tap.
+- tapOn:
+    id: "onboarding-role-next"
+- assertVisible: "What brings you here?"
+
+# Select the "As a musician" radio tile.
+# testID used instead of visible text because the tile is a composite
+# GenericElement; Maestro substring-matching on composite labels is unreliable
+# (same quirk as kind-tiles in the Post Request flow).
+- tapOn:
+    id: "onboarding-role-musician"
+
+# Confirm "As a musician" copy is visible (tile renders its label as a child
+# text element even though the container is composite).
+- assertVisible: "As a musician"
+
+# Tap Next. The button is now enabled (a role has been selected). The mutation
+# fires, sets the role server-side, and router.replace navigates to
+# /onboarding/musician on success.
+- tapOn:
+    id: "onboarding-role-next"
+
+# Assert we have arrived on the musician step-2 placeholder screen.
+# The stub testID is stable — MUS-90 will replace the content but the route
+# and testID are guaranteed to remain.
+- assertVisible:
+    id: "onboarding-musician-stub"
