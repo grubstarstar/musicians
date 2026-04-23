@@ -33,6 +33,9 @@ Capture stdout, stderr, and exit code. The script sorts numbered flows (`01-*`, 
 - `maestro` on PATH (or at `~/.maestro/bin/maestro` — the script auto-adds it).
 - `xcrun simctl` and `jq`.
 - `build/MusiciansDev.app` cached.
+- `musicians_test` Postgres DB migrated. If the e2e server autostart fails because the test DB is missing or stale, that surfaces as a startup error in the server log (`$TMPDIR/e2e-run-server.log`). Name it as a prereq failure and ask the human to run `pnpm e2e:db-setup`.
+
+The script **auto-manages Metro and the e2e server** — it kills whatever is on ports 8082 / 3002 and restarts both from its own cwd (your worktree), so the served bundle always matches the branch under test and the app always hits the test server on :3002 with `EXPO_PUBLIC_API_URL` set correctly. You do NOT need to run `pnpm e2e:mobile` or `pnpm e2e:server` yourself, and you should NOT set `E2E_NO_AUTOSTART=1` — that flag exists only for humans driving Metro interactively.
 
 If a prereq is missing, **do NOT run `pnpm e2e:build-app`** — that kicks off a multi-minute EAS cloud build and is out of scope for a single ticket's qa-test run. Post a Jira comment naming the missing prereq, do NOT transition, and report "skipped" in your final message to the orchestrator.
 
