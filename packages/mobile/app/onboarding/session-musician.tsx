@@ -143,11 +143,23 @@ function SessionMusicianProfileForm({ mode, existing }: FormProps) {
 
   const upsert = useMutation(
     trpc.musicianProfiles.upsertMine.mutationOptions({
-      onSuccess: () => {
+      onSuccess: async () => {
         // The profile query is keyed on `{ userId }` — invalidate so the
         // drawer edit view reflects the latest values next time it opens.
         queryClient.invalidateQueries({
           queryKey: trpc.musicianProfiles.get.queryOptions({ userId }).queryKey,
+        });
+        // MUS-94: the `available_for_session_work` flag set by this upsert is
+        // one of the four "musician step-2 complete" routes the auth gate
+        // checks. We `refetchQueries` (not bare `invalidateQueries`) and
+        // await it: useSuspenseQuery on the (app) gate returns any cached
+        // value synchronously on the next mount, so if we navigate before
+        // the refetch lands the gate re-runs with the stale 'musician'
+        // value and bounces us right back here. Awaiting the refetch means
+        // the cached value is already 'complete' by the time router.replace
+        // fires.
+        await queryClient.refetchQueries({
+          queryKey: trpc.onboarding.getResumeStep.queryOptions().queryKey,
         });
         // End-state for both new + edit: drop into the app home. `replace`
         // so the form isn't left in the back stack with stale local state.

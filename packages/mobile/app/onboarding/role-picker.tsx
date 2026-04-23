@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../src/auth/AuthContext";
-import { trpc } from "../../src/trpc";
+import { queryClient, trpc } from "../../src/trpc";
 
 // MUS-89: first step of the onboarding wizard. The user picks one of the
 // available roles; submitting appends it to `users.roles` via
@@ -47,7 +47,7 @@ export default function RolePickerScreen() {
 
   const setRole = useMutation(
     trpc.onboarding.setRole.mutationOptions({
-      onSuccess: (data, variables) => {
+      onSuccess: async (data, variables) => {
         // MUS-92: sync AuthContext with the server's now-populated `roles`
         // before navigating. Otherwise any subsequent navigation into the
         // (app) group (e.g. the create-entity deep link from the musician
@@ -63,6 +63,17 @@ export default function RolePickerScreen() {
         // roles synchronously from the same handler that calls
         // `router.replace` matches the existing login/register pattern.
         setRoles(data.roles);
+        // MUS-94: also refresh the resume-step query the (app) gate reads.
+        // useSuspenseQuery in the gate serves cached data synchronously on
+        // mount — if we navigate into any (app)-segment route (e.g. step-2
+        // then pushing into /create-entity) before the cache is updated,
+        // the gate sees the stale 'role-picker' answer and bounces us
+        // straight back here. Awaiting refetchQueries guarantees the
+        // cached value is the fresh step (musician / promoter) by the time
+        // the next (app) mount runs the gate.
+        await queryClient.refetchQueries({
+          queryKey: trpc.onboarding.getResumeStep.queryOptions().queryKey,
+        });
         // Route to the matching step-2 screen. `replace` so "back" doesn't
         // land on the picker after the role is already recorded — the wizard
         // advances; if the user needs to change their mind, the add-role

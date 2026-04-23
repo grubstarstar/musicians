@@ -19,7 +19,11 @@ import {
   getMusicianProfile,
   upsertMusicianProfile,
 } from '../musicianProfiles/queries.js';
-import { addUserRole, ONBOARDING_ROLES } from '../onboarding/queries.js';
+import {
+  addUserRole,
+  getResumeStep,
+  ONBOARDING_ROLES,
+} from '../onboarding/queries.js';
 import { getPromoterGroupDetail } from '../promoterGroups/getPromoterGroupDetail.js';
 import {
   createPromoterGroupWithCreator,
@@ -188,6 +192,15 @@ export const appRouter = router({
         const userId = Number(ctx.user.id);
         return addUserRole(userId, input.role);
       }),
+    // MUS-94: server-derived resume step. The mobile app calls this from the
+    // auth gate on every launch/login and after each onboarding mutation to
+    // decide whether to show the wizard (and which step) or the home screen.
+    // Rules live in `resolveResumeStep`; DB evidence gathered in
+    // `getOnboardingEvidence`. Returns `'role-picker' | 'musician' | 'promoter' | 'complete'`.
+    getResumeStep: protectedProcedure.query(({ ctx }) => {
+      const userId = Number(ctx.user.id);
+      return getResumeStep(userId);
+    }),
   }),
   // MUS-95: post-onboarding user mutations. `addRole` is the settings-side
   // entry point for appending a second role to `users.roles` (e.g. a promoter

@@ -1,10 +1,15 @@
 appId: com.musicians.app
 ---
 # Flow 04 of the onboarding e2e journey (MUS-91).
-# Entry state: flow 01 (01-signup.yaml) has run — "newbie" account exists in
-# the test DB with password "abcd1234" and roles=[].
+# Entry state: DB may contain leftover state from flow 02 (newbie added the
+# musician role and created bands), so this flow resets the DB up front to
+# restore the seed fixture where newbie is `roles=[]` again. MUS-94 sharpened
+# this requirement — the new server-derived gate uses real DB evidence (not
+# just `roles`), so running this flow against a post-flow-02 state would see
+# newbie as 'complete' (has a band_members row) and skip the wizard entirely.
 #
 # What this flow exercises:
+#   - Reset the DB so newbie is back at roles=[] and membership-free.
 #   - Launch with clearKeychain to wipe any stale token.
 #   - Log in as newbie (roles=[] → app guard redirects to /onboarding/role-picker).
 #   - Assert the role-picker screen is visible.
@@ -25,6 +30,12 @@ appId: com.musicians.app
 #   - Tap the "Join existing promoter group" tile → tap Next → assert the
 #     placeholder screen appears (onboarding-promoter-join-placeholder testID).
 #   - Tap onboarding-promoter-join-back → assert step-2 is still showing.
+
+# MUS-94: reset the DB so newbie is back at roles=[] / membership-free before
+# we interact with the app. Without this, the new server-derived gate would
+# see newbie as 'complete' (flow 02 left a band_members row behind) and skip
+# the role-picker entirely, failing the AC checks below.
+- runFlow: ../../helpers/reset.yaml
 
 # Re-launch the app with clearKeychain so any stale SecureStore token from a
 # previous run is wiped before the auth context fires. clearKeychain: true does

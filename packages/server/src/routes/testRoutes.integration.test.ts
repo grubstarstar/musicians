@@ -8,7 +8,9 @@
 //     promoter-home slice: `promoter1`, promoter group "Test Promotions",
 //     venue "Test Hall", plus the request-to-join slice: `gigtar`, `sesh`,
 //     band "The Testers"; MUS-91 added the onboarding slice: `newbie`
-//     with password "abcd1234" and roles=[]).
+//     with password "abcd1234" and roles=[]; MUS-94 added the onboarding-
+//     resume slice: `onboardmus` (musician, no step-2), `onboardprom`
+//     (promoter, no step-2), `onboarddone` (musician + band member)).
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const TEST_DB_URL =
@@ -97,13 +99,18 @@ describe.skipIf(skip)('POST /test/reset (integration)', () => {
     expect(allUsers.map((u) => u.username).sort()).toEqual([
       'gigtar',
       'newbie',
+      'onboarddone',
+      'onboardmus',
+      'onboardprom',
       'promoter1',
       'sesh',
     ]);
     expect(allBands.map((b) => b.name)).toEqual(['The Testers']);
-    // Only gigtar is in a band (sesh is intentionally bandless; promoter1 is
-    // a promoter and also not in any band; newbie has no role yet).
-    expect(memberships).toHaveLength(1);
+    // Two memberships: gigtar (request-to-join fixture) + onboarddone (MUS-94
+    // "complete" resume state fixture). sesh is intentionally bandless;
+    // promoter1 is a promoter; newbie / onboardmus / onboardprom are all
+    // deliberately pre-step-2.
+    expect(memberships).toHaveLength(2);
     expect(allPromoterGroups.map((g) => g.name)).toEqual(['Test Promotions']);
     expect(allVenues.map((v) => v.name)).toEqual(['Test Hall']);
     expect(allRoles.map((r) => r.role)).toEqual(['promoter']);
@@ -127,6 +134,9 @@ describe.skipIf(skip)('POST /test/reset (integration)', () => {
     expect(allUsers.map((u) => u.username).sort()).toEqual([
       'gigtar',
       'newbie',
+      'onboarddone',
+      'onboardmus',
+      'onboardprom',
       'promoter1',
       'sesh',
     ]);

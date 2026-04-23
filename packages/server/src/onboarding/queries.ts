@@ -1,6 +1,18 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db.js';
-import { users } from '../schema.js';
+import {
+  bandMembers,
+  musicianProfiles,
+  promotersPromoterGroups,
+  requests,
+  userRoles,
+  users,
+} from '../schema.js';
+import {
+  resolveResumeStep,
+  type OnboardingEvidence,
+  type OnboardingStep,
+} from './resumeStep.js';
 
 /**
  * Roles the onboarding role-picker (MUS-89) is allowed to set. The schema
@@ -76,4 +88,123 @@ export async function addUserRole(
     throw new Error(`addUserRole: user ${userId} disappeared mid-update`);
   }
   return { roles: afterRace.roles };
+}
+
+/**
+ * Gather the per-user evidence counters used by `resolveResumeStep` to decide
+ * where the onboarding wizard should resume. Runs one query per evidence
+ * category — small number of lightweight COUNT(*)-ish probes against indexed
+ * columns. Could be one-big-UNION but the readability cost outweighs the
+ * round-trip savings at this volume (six queries run in parallel via
+ * `Promise.all`).
+ *
+ * Returns a shape matching `OnboardingEvidence`; the pure resolver layer
+ * does the rule work.
+ *
+ * Notes:
+ * - "Promoter group membership" is resolved through `user_roles` →
+ *   `promoters_promoter_groups` (the same path as `isMemberOfPromoterGroup`
+ *   and `listMyPromoterGroups`). A row on `promoters_promoter_groups` exists
+ *   iff the user has been linked to a group as a promoter, which is exactly
+ *   what the AC means by "promoter_group_members row".
+ * - Pending `band_join` / `promoter_group_join` are detected by the discrete
+ *   `(kind, status)` filter on `requests`; we count them rather than exists-check
+ *   because the resolver only needs > 0 either way, and Drizzle produces a
+ *   cleaner projection with an explicit SELECT.
+ * - `available_for_session_work` is read from `musician_profiles` (1:1 with
+ *   users); we fall back to `false` if no row exists (user never entered the
+ *   session-musician branch).
+ */
+export async function getOnboardingEvidence(
+  userId: number,
+): Promise<OnboardingEvidence> {
+  const [
+    userRow,
+    bandMemberRows,
+    sessionProfileRow,
+    pendingBandJoinRows,
+    promoterGroupMemberRows,
+    pendingPromoterGroupJoinRows,
+  ] = await Promise.all([
+    // Read roles fresh from the DB rather than trusting `ctx.user.roles` —
+    // the JWT snapshots roles at login time and may be stale if onboarding
+    // mutations have modified them since. The resume-step query is the
+    // authoritative read, so it must use authoritative data.
+    db
+      .select({ roles: users.roles })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1),
+    db
+      .select({ band_id: bandMembers.band_id })
+      .from(bandMembers)
+      .where(eq(bandMembers.user_id, userId))
+      .limit(1),
+    db
+      .select({
+        availableForSessionWork: musicianProfiles.available_for_session_work,
+      })
+      .from(musicianProfiles)
+      .where(eq(musicianProfiles.user_id, userId))
+      .limit(1),
+    db
+      .select({ id: requests.id })
+      .from(requests)
+      .where(
+        and(
+          eq(requests.source_user_id, userId),
+          eq(requests.kind, 'band_join'),
+          eq(requests.status, 'open'),
+        ),
+      )
+      .limit(1),
+    // Promoter group membership goes through `user_roles` (the join table
+    // FKs `user_roles.id`, not `users.id` directly). A single matching row
+    // from the innerJoin is enough to prove "at least one".
+    db
+      .select({ id: promotersPromoterGroups.id })
+      .from(promotersPromoterGroups)
+      .innerJoin(
+        userRoles,
+        eq(userRoles.id, promotersPromoterGroups.user_role_id),
+      )
+      .where(and(eq(userRoles.user_id, userId), eq(userRoles.role, 'promoter')))
+      .limit(1),
+    db
+      .select({ id: requests.id })
+      .from(requests)
+      .where(
+        and(
+          eq(requests.source_user_id, userId),
+          eq(requests.kind, 'promoter_group_join'),
+          eq(requests.status, 'open'),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  // A missing user row shouldn't be possible (caller is authenticated) but
+  // if the row were deleted mid-session we'd rather return an empty roles
+  // array and route to role-picker than crash — the next login round-trip
+  // will surface the deletion via a 401 from /me.
+  const roles = userRow[0]?.roles ?? [];
+
+  return {
+    roles,
+    bandMemberCount: bandMemberRows.length,
+    availableForSessionWork:
+      sessionProfileRow[0]?.availableForSessionWork ?? false,
+    pendingBandJoinCount: pendingBandJoinRows.length,
+    promoterGroupMemberCount: promoterGroupMemberRows.length,
+    pendingPromoterGroupJoinCount: pendingPromoterGroupJoinRows.length,
+  };
+}
+
+/**
+ * Compose the evidence + resolver steps and return the resume step the
+ * client should route to. Thin wrapper exposed to the tRPC surface.
+ */
+export async function getResumeStep(userId: number): Promise<OnboardingStep> {
+  const evidence = await getOnboardingEvidence(userId);
+  return resolveResumeStep(evidence);
 }

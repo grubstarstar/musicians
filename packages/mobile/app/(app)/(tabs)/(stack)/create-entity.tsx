@@ -68,12 +68,23 @@ function CreateEntityForm({ params }: { params: CreateEntityParams }) {
 
   const createBand = useMutation(
     trpc.bands.create.mutationOptions({
-      onSuccess: (data) => {
+      onSuccess: async (data) => {
         // Refresh the caller's "my bands" so the home / drawer list shows
         // the new band when the user returns. The detail query for this
         // specific band is filled fresh by the profile screen on land.
         queryClient.invalidateQueries({
           queryKey: trpc.bands.listMine.queryOptions().queryKey,
+        });
+        // MUS-94: the band_members row written by `bands.create` is one of
+        // the four "musician step-2 complete" routes the auth gate checks.
+        // We `refetchQueries` (not bare `invalidateQueries`) and await it:
+        // useSuspenseQuery on the (app) gate serves cached data synchronously
+        // on the next mount, so if we navigate before the refetch lands the
+        // gate re-runs with the stale 'musician' value and bounces straight
+        // back into the wizard. Awaiting the refetch guarantees the cached
+        // value is 'complete' by the time router.replace fires.
+        await queryClient.refetchQueries({
+          queryKey: trpc.onboarding.getResumeStep.queryOptions().queryKey,
         });
         const route = resolvePostCreateRoute({
           entityType: "band",
@@ -88,9 +99,15 @@ function CreateEntityForm({ params }: { params: CreateEntityParams }) {
 
   const createPromoterGroup = useMutation(
     trpc.promoterGroups.create.mutationOptions({
-      onSuccess: (data) => {
+      onSuccess: async (data) => {
         queryClient.invalidateQueries({
           queryKey: trpc.promoterGroups.listMine.queryOptions().queryKey,
+        });
+        // MUS-94: the promoters_promoter_groups row is one of the "promoter
+        // step-2 complete" routes. Same awaited-refetch rationale as the
+        // band branch above — see there for the full note.
+        await queryClient.refetchQueries({
+          queryKey: trpc.onboarding.getResumeStep.queryOptions().queryKey,
         });
         const route = resolvePostCreateRoute({
           entityType: "promoterGroup",
