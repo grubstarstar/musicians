@@ -8,7 +8,9 @@ export type RequestCreateInput =
   | {
       kind: 'musician-for-band';
       bandId: number;
-      instrument: string;
+      // MUS-68: instrument resolved to a row in the `instruments` taxonomy
+      // before this helper is called. Free-text fallbacks land on "Other".
+      instrumentId: number;
       style?: string;
       rehearsalCommitment?: string;
     }
@@ -51,10 +53,10 @@ export type RequestCreateInput =
     }
   // `band-for-musician` (MUS-58): musician-side request, no anchor object.
   // Anchor lives on the EoI side — the accepting band member supplies the
-  // bandId they represent. Free-text instrument for this slice.
+  // bandId they represent. MUS-68: instrument resolved to the taxonomy.
   | {
       kind: 'band-for-musician';
-      instrument: string;
+      instrumentId: number;
       availability?: string;
       demosUrl?: string;
     }
@@ -92,7 +94,7 @@ export function buildRequestInsertValues(
   if (input.kind === 'musician-for-band') {
     const details: RequestDetails = {
       kind: 'musician-for-band',
-      instrument: input.instrument,
+      instrumentId: input.instrumentId,
       ...(input.style !== undefined ? { style: input.style } : {}),
       ...(input.rehearsalCommitment !== undefined
         ? { rehearsalCommitment: input.rehearsalCommitment }
@@ -202,7 +204,7 @@ export function buildRequestInsertValues(
     // specifies. Slot_count = 1.
     const details: RequestDetails = {
       kind: 'band-for-musician',
-      instrument: input.instrument,
+      instrumentId: input.instrumentId,
       ...(input.availability !== undefined ? { availability: input.availability } : {}),
       ...(input.demosUrl !== undefined ? { demosUrl: input.demosUrl } : {}),
     };

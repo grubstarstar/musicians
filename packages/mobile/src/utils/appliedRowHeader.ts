@@ -25,7 +25,7 @@ export function deriveAppliedRowHeader(
   if (request.details.kind === "musician-for-band" && request.anchorBand) {
     return {
       title: request.anchorBand.name,
-      subtitle: request.details.instrument,
+      subtitle: request.details.instrumentName ?? "Instrument",
       imageUrl: request.anchorBand.imageUrl,
     };
   }

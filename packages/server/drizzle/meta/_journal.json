@@ -99,6 +99,13 @@
       "when": 1777200000000,
       "tag": "0013_creator_user_id_on_bands_promoter_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1777250000000,
+      "tag": "0014_instruments_taxonomy",
+      "breakpoints": true
     }
   ]
 }

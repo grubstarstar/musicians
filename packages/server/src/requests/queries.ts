@@ -5,6 +5,7 @@ import {
   bands,
   expressionsOfInterest,
   gigs,
+  instruments,
   requests,
   users,
   venues,
@@ -12,7 +13,6 @@ import {
 import type {
   EoiDetails,
   EoiState,
-  RequestDetails,
   RequestKind,
   RequestStatus,
 } from '../schema.js';
@@ -24,6 +24,11 @@ import { matchesGigRequest } from './matchesGigRequest.js';
 import { matchesMusicianRequest } from './matchesMusicianRequest.js';
 import { matchesNightAtVenue } from './matchesNightAtVenue.js';
 import { sortEoisForManage, type SortableEoi } from './sortEoisForManage.js';
+import {
+  collectInstrumentIds,
+  withInstrumentName,
+  type RequestDetailsWithInstrumentName,
+} from './withInstrumentName.js';
 
 export interface ShapedRequest {
   id: number;
@@ -31,7 +36,7 @@ export interface ShapedRequest {
   status: RequestStatus;
   slotCount: number;
   slotsFilled: number;
-  details: RequestDetails;
+  details: RequestDetailsWithInstrumentName;
   anchorBandId: number | null;
   anchorGigId: number | null;
   createdAt: Date;
@@ -45,6 +50,9 @@ export interface ShapedRequest {
 // `anchorBand` is retained for backwards-compat with the MUS-51 listing code
 // (web discovery list) and the mobile requests.tsx; it's populated only for
 // `musician-for-band` rows.
+//
+// MUS-68: `details` on the two instrument-carrying kinds is enriched with
+// `instrumentName` from the `instruments` taxonomy join.
 export interface ShapedRequestWithAnchors extends Omit<ShapedRequest, 'anchorBandId' | 'anchorGigId'> {
   anchorBand: { id: number; name: string; imageUrl: string | null } | null;
   anchorGig: { id: number; datetime: Date; venue: { id: number; name: string } } | null;
@@ -58,6 +66,9 @@ export interface ShapedRequestWithAnchors extends Omit<ShapedRequest, 'anchorBan
 // band anchor. `band` is populated for `musician-for-band` and for
 // `gig-for-band` (where the band sits inside `details.bandId`, resolved via
 // a separate lookup). `gig` is populated for `band-for-gig-slot`.
+//
+// MUS-68: inherits `details: RequestDetailsWithInstrumentName` from
+// `ShapedRequest` — instrument-carrying kinds include `instrumentName`.
 export interface ShapedRequestForDetail extends Omit<ShapedRequest, 'anchorBandId' | 'anchorGigId'> {
   band: { id: number; name: string; imageUrl: string | null } | null;
   gig: {
@@ -95,7 +106,30 @@ export async function createRequest(
       anchorGigId: requests.anchor_gig_id,
       createdAt: requests.created_at,
     });
-  return row;
+  // MUS-68: denormalise `instrumentName` onto the returned details so the
+  // client can render the pasted-back request without a follow-up lookup.
+  const ids = collectInstrumentIds([row.details]);
+  const instrumentNameById = await loadInstrumentNameMap(ids);
+  return {
+    ...row,
+    details: withInstrumentName(row.details, instrumentNameById),
+  };
+}
+
+/**
+ * Bulk resolve an instrument id list to a `Map<id, name>` for display
+ * denormalisation. Returns an empty map if the list is empty so callers can
+ * skip the DB round-trip without a branch at each call site.
+ */
+async function loadInstrumentNameMap(
+  ids: number[],
+): Promise<Map<number, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: instruments.id, name: instruments.name })
+    .from(instruments)
+    .where(inArray(instruments.id, ids));
+  return new Map(rows.map((r) => [r.id, r.name]));
 }
 
 /**
@@ -147,6 +181,10 @@ export async function listOpenRequests(filter: {
     .where(whereClause)
     .orderBy(desc(requests.created_at));
 
+  const instrumentNameById = await loadInstrumentNameMap(
+    collectInstrumentIds(rows.map((r) => r.details)),
+  );
+
   return rows.map((r) => {
     const anchorBand =
       r.anchorBandId !== null && r.anchorBandName !== null
@@ -173,7 +211,7 @@ export async function listOpenRequests(filter: {
       status: r.status,
       slotCount: r.slotCount,
       slotsFilled: r.slotsFilled,
-      details: r.details,
+      details: withInstrumentName(r.details, instrumentNameById),
       createdAt: r.createdAt,
       anchorBand,
       anchorGig,
@@ -248,13 +286,17 @@ export async function getRequestForDetail(
         }
       : null;
 
+  const instrumentNameById = await loadInstrumentNameMap(
+    collectInstrumentIds([row.details]),
+  );
+
   return {
     id: row.id,
     kind: row.kind,
     status: row.status,
     slotCount: row.slotCount,
     slotsFilled: row.slotsFilled,
-    details: row.details,
+    details: withInstrumentName(row.details, instrumentNameById),
     createdAt: row.createdAt,
     band,
     gig,
@@ -342,6 +384,10 @@ export async function listMyRequests(userId: number): Promise<ShapedRequestWithE
     .innerJoin(users, eq(users.id, expressionsOfInterest.target_user_id))
     .where(inArray(expressionsOfInterest.request_id, requestIds));
 
+  const instrumentNameById = await loadInstrumentNameMap(
+    collectInstrumentIds(requestRows.map((r) => r.details)),
+  );
+
   return requestRows.map((r) => {
     const matching = eoiRows
       .filter((e) => e.requestId === r.id)
@@ -383,7 +429,7 @@ export async function listMyRequests(userId: number): Promise<ShapedRequestWithE
       status: r.status,
       slotCount: r.slotCount,
       slotsFilled: r.slotsFilled,
-      details: r.details,
+      details: withInstrumentName(r.details, instrumentNameById),
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       anchorBand,
@@ -450,7 +496,11 @@ export interface ShapedMatch {
     venueName: string | null;
     proposedDate: string | null;
     // Fields for `musician-for-band` / `band-for-musician` counterparts.
-    instrument: string | null;
+    // MUS-68: instrumentId is the taxonomy id; instrumentName is denormalised
+    // from the `instruments` join so the client can render without a second
+    // lookup. Both are null for kinds that don't carry an instrument.
+    instrumentId: number | null;
+    instrumentName: string | null;
   };
 }
 
@@ -486,7 +536,8 @@ function emptyCounterpartShape(): Omit<ShapedMatch['counterpart'], 'id' | 'kind'
     venueId: null,
     venueName: null,
     proposedDate: null,
-    instrument: null,
+    instrumentId: null,
+    instrumentName: null,
   };
 }
 
@@ -602,6 +653,25 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
         .where(inArray(venues.id, promoterForVenueNightVenueIds))
     : [];
   const venuesById = new Map(extraVenues.map((v) => [v.id, v]));
+
+  // MUS-68: instrument ids referenced across `musician-for-band` and
+  // `band-for-musician` candidate rows. Bulk-fetch names so every matched
+  // counterpart can carry `instrumentName` without an N+1 lookup.
+  const instrumentIdSet = new Set<number>();
+  for (const r of candidateRows) {
+    if (r.details.kind === 'musician-for-band' || r.details.kind === 'band-for-musician') {
+      instrumentIdSet.add(r.details.instrumentId);
+    }
+  }
+  const instrumentRows = instrumentIdSet.size
+    ? await db
+        .select({ id: instruments.id, name: instruments.name })
+        .from(instruments)
+        .where(inArray(instruments.id, Array.from(instrumentIdSet)))
+    : [];
+  const instrumentNameById = new Map(
+    instrumentRows.map((i) => [i.id, i.name]),
+  );
 
   const matches: ShapedMatch[] = [];
 
@@ -759,14 +829,14 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
       }
     } else if (mine.kind === 'musician-for-band') {
       if (mine.details.kind !== 'musician-for-band') continue;
-      const myInstrument = mine.details.instrument;
+      const myInstrumentId = mine.details.instrumentId;
       for (const other of candidateRows) {
         if (other.kind !== 'band-for-musician') continue;
         if (other.details.kind !== 'band-for-musician') continue;
         if (
           !matchesMusicianRequest(
-            { instrument: myInstrument },
-            { instrument: other.details.instrument },
+            { instrumentId: myInstrumentId },
+            { instrumentId: other.details.instrumentId },
           )
         ) {
           continue;
@@ -778,20 +848,22 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
             id: other.id,
             kind: 'band-for-musician',
             sourceUserId: other.sourceUserId,
-            instrument: other.details.instrument,
+            instrumentId: other.details.instrumentId,
+            instrumentName:
+              instrumentNameById.get(other.details.instrumentId) ?? null,
           },
         });
       }
     } else if (mine.kind === 'band-for-musician') {
       if (mine.details.kind !== 'band-for-musician') continue;
-      const myInstrument = mine.details.instrument;
+      const myInstrumentId = mine.details.instrumentId;
       for (const other of candidateRows) {
         if (other.kind !== 'musician-for-band') continue;
         if (other.details.kind !== 'musician-for-band') continue;
         if (
           !matchesMusicianRequest(
-            { instrument: other.details.instrument },
-            { instrument: myInstrument },
+            { instrumentId: other.details.instrumentId },
+            { instrumentId: myInstrumentId },
           )
         ) {
           continue;
@@ -806,7 +878,9 @@ export async function listMatchesForUser(userId: number): Promise<ShapedMatch[]>
             bandId: other.anchorBandId,
             bandName: other.bandName,
             bandImageUrl: other.bandImageUrl,
-            instrument: other.details.instrument,
+            instrumentId: other.details.instrumentId,
+            instrumentName:
+              instrumentNameById.get(other.details.instrumentId) ?? null,
           },
         });
       }

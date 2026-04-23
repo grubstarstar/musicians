@@ -38,18 +38,18 @@ describe('filterMyBands', () => {
 });
 
 describe('buildMusicianForBandInput', () => {
-  it('trims and includes all fields when provided', () => {
+  it('includes all fields when provided', () => {
     expect(
       buildMusicianForBandInput({
         bandId: 7,
-        instrument: '  Bass  ',
+        instrumentId: 42,
         style: ' jazz-funk ',
         rehearsalCommitment: ' weekly ',
       }),
     ).toEqual({
       kind: 'musician-for-band',
       bandId: 7,
-      instrument: 'Bass',
+      instrumentId: 42,
       style: 'jazz-funk',
       rehearsalCommitment: 'weekly',
     });
@@ -58,16 +58,16 @@ describe('buildMusicianForBandInput', () => {
   it('omits empty-string optional fields entirely', () => {
     const result = buildMusicianForBandInput({
       bandId: 3,
-      instrument: 'Drums',
+      instrumentId: 43,
       style: '',
       rehearsalCommitment: '   ',
     });
     expect(result).toEqual({
       kind: 'musician-for-band',
       bandId: 3,
-      instrument: 'Drums',
+      instrumentId: 43,
     });
-    expect(Object.keys(result).sort()).toEqual(['bandId', 'instrument', 'kind']);
+    expect(Object.keys(result).sort()).toEqual(['bandId', 'instrumentId', 'kind']);
   });
 });
 
@@ -315,13 +315,13 @@ describe('buildBandForMusicianInput', () => {
   it('returns a payload with all fields set', () => {
     expect(
       buildBandForMusicianInput({
-        instrument: 'Bass Guitar',
+        instrumentId: 42,
         availability: 'Weekends',
         demosUrl: 'https://example.com/demos',
       }),
     ).toEqual({
       kind: 'band-for-musician',
-      instrument: 'Bass Guitar',
+      instrumentId: 42,
       availability: 'Weekends',
       demosUrl: 'https://example.com/demos',
     });
@@ -330,34 +330,31 @@ describe('buildBandForMusicianInput', () => {
   it('omits optional fields when blank', () => {
     expect(
       buildBandForMusicianInput({
-        instrument: 'Drums',
+        instrumentId: 43,
         availability: '',
         demosUrl: '   ',
       }),
     ).toEqual({
       kind: 'band-for-musician',
-      instrument: 'Drums',
+      instrumentId: 43,
     });
   });
 
-  it('trims the instrument before submitting', () => {
+  it('returns null when instrumentId is missing', () => {
     expect(
       buildBandForMusicianInput({
-        instrument: '  Guitar  ',
-        availability: '',
+        instrumentId: null,
+        availability: 'Weekends',
         demosUrl: '',
       }),
-    ).toEqual({
-      kind: 'band-for-musician',
-      instrument: 'Guitar',
-    });
+    ).toBeNull();
   });
 
-  it('returns null when instrument is blank', () => {
+  it('returns null when instrumentId is zero or negative', () => {
     expect(
       buildBandForMusicianInput({
-        instrument: '   ',
-        availability: 'Weekends',
+        instrumentId: 0,
+        availability: '',
         demosUrl: '',
       }),
     ).toBeNull();

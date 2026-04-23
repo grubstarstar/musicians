@@ -327,7 +327,10 @@ export const eoiStateEnum = pgEnum('eoi_state', [
 export type RequestDetails =
   | {
       kind: 'musician-for-band';
-      instrument: string;
+      // MUS-68: instrument resolved against the `instruments` taxonomy. Stored
+      // by id; the sibling-close invariant and match rule compare id equality.
+      // Unresolved free-text inputs land on the canonical "Other" row.
+      instrumentId: number;
       style?: string;
       rehearsalCommitment?: string;
     }
@@ -371,7 +374,8 @@ export type RequestDetails =
   // user is a member of. Acceptance adds the musician to that band.
   | {
       kind: 'band-for-musician';
-      instrument: string;
+      // MUS-68: see note on `musician-for-band` above.
+      instrumentId: number;
       availability?: string;
       demosUrl?: string;
     }
@@ -472,6 +476,25 @@ export type ExpressionOfInterest = typeof expressionsOfInterest.$inferSelect;
 export type RequestKind = (typeof requestKindEnum.enumValues)[number];
 export type RequestStatus = (typeof requestStatusEnum.enumValues)[number];
 export type EoiState = (typeof eoiStateEnum.enumValues)[number];
+
+// --- Instruments taxonomy (MUS-68) ---
+//
+// Controlled vocabulary for the `musician-for-band` / `band-for-musician`
+// request kinds. Kept as a table (not a pgEnum) so new instruments can be
+// added by seed/admin without a schema migration per entry. `name` is unique
+// — the seed is the authoritative source. `category` is a free-text string
+// (strings / percussion / wind / brass / electronic / voice) so new
+// categories don't require migrations either. A canonical "Other" row is
+// seeded and serves as the fallback for free-text inputs the server can't
+// resolve against the taxonomy — avoids a nullable `instrumentId`.
+export const instruments = pgTable('instruments', {
+  id: serial('id').primaryKey(),
+  name: text('name').unique().notNull(),
+  category: text('category'),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Instrument = typeof instruments.$inferSelect;
 
 // --- Musician profiles (MUS-85) ---
 //

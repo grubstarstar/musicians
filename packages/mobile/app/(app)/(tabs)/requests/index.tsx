@@ -178,12 +178,23 @@ function formatCounterpartDate(
 // from the server and pick render fields by `kind`. The server keeps a
 // per-kind discriminated union of `details` so we can narrow safely here.
 type RowDetails =
-  | { kind: "musician-for-band"; instrument: string; rehearsalCommitment?: string }
+  | {
+      kind: "musician-for-band";
+      instrumentId: number;
+      instrumentName: string | null;
+      rehearsalCommitment?: string;
+    }
   | { kind: "band-for-gig-slot"; setLength?: number; feeOffered?: number; gigId: number }
   | { kind: "gig-for-band"; bandId: number; targetDate: string; area?: string; feeAsked?: number }
   | { kind: "night-at-venue"; concept: string; possibleDates: string[] }
   | { kind: "promoter-for-venue-night"; venueId: number; proposedDate: string; concept?: string }
-  | { kind: "band-for-musician"; instrument: string; availability?: string; demosUrl?: string }
+  | {
+      kind: "band-for-musician";
+      instrumentId: number;
+      instrumentName: string | null;
+      availability?: string;
+      demosUrl?: string;
+    }
   | { kind: "band_join"; bandId: number }
   | { kind: "promoter_group_join"; promoterGroupId: number };
 
@@ -255,12 +266,13 @@ function rowContentFor(
   switch (details.kind) {
     case "musician-for-band": {
       const title = band?.name ?? "A band";
+      const instrument = details.instrumentName ?? "Instrument";
       return {
         title,
-        pill: details.instrument,
+        pill: instrument,
         subtitle: details.rehearsalCommitment ?? null,
         avatarUrl: band?.imageUrl ?? null,
-        accessibilityLabel: `Open request from ${title} for ${details.instrument}`,
+        accessibilityLabel: `Open request from ${title} for ${instrument}`,
       };
     }
     case "band-for-gig-slot": {
@@ -307,12 +319,13 @@ function rowContentFor(
       };
     }
     case "band-for-musician": {
+      const instrument = details.instrumentName ?? "Instrument";
       return {
-        title: `Musician — ${details.instrument}`,
-        pill: details.instrument,
+        title: `Musician — ${instrument}`,
+        pill: instrument,
         subtitle: details.availability ?? null,
         avatarUrl: null,
-        accessibilityLabel: `Open musician looking for a band — ${details.instrument}`,
+        accessibilityLabel: `Open musician looking for a band — ${instrument}`,
       };
     }
     case "band_join": {

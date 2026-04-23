@@ -2,20 +2,19 @@
 //
 // When a `band-for-musician` EoI is accepted for band B and the joining
 // musician's instrument is I, every open `musician-for-band` request where
-// `anchor_band_id = B` AND (normalised) `details.instrument` equals I must
-// have its slot counters advanced and potentially auto-close. If a sibling
+// `anchor_band_id = B` AND `details.instrumentId` equals I must have its
+// slot counters advanced and potentially auto-close. If a sibling
 // auto-closes, every pending EoI still outstanding against it must be
 // auto-rejected.
 //
 // Mirrors MUS-57's `computeGigAllocationUpdates` exactly, but:
 //   - the anchor is a band (not a gig), and
-//   - the discriminator is instrument (not slot index).
+//   - the discriminator is instrument id (not slot index).
 //
-// Instruments are compared after the same normalise (lowercase + trim) rule
-// used by `matchesMusicianRequest`. Siblings whose instrument doesn't match
-// are left untouched — a drummer joining doesn't affect the band's open
-// bass-player search. MUS-68 will swap instrument comparison for
-// `instrumentId` equality once the taxonomy is in place.
+// MUS-68: instruments are now compared by id against the controlled
+// taxonomy — no normalisation needed. Siblings whose instrumentId doesn't
+// match are left untouched — a drummer joining doesn't affect the band's
+// open bass-player search.
 //
 // Kept dependency-free so it can be unit-tested in isolation. The
 // infrastructure-side caller (`respondToEoi`) fetches the siblings + their
@@ -23,14 +22,13 @@
 // the same transaction.
 
 import { computeSlotOutcome } from './computeSlotOutcome.js';
-import { normaliseInstrument } from './matchesMusicianRequest.js';
 
 export interface BandSiblingRequest {
   id: number;
   slotsFilled: number;
   slotCount: number;
-  /** The `details.instrument` from the sibling `musician-for-band` request. */
-  instrument: string;
+  /** The `details.instrumentId` from the sibling `musician-for-band` request. */
+  instrumentId: number;
   pendingEoiIds: number[];
 }
 
@@ -44,9 +42,9 @@ export interface BandSiblingUpdate {
 /**
  * Given the pre-update state of the sibling `musician-for-band` requests
  * anchored to a band that just had a member allocated (plus each sibling's
- * currently-pending EoI ids and the joining musician's instrument), returns
- * the per-request updates to apply for those siblings whose instrument
- * matches.
+ * currently-pending EoI ids and the joining musician's instrumentId),
+ * returns the per-request updates to apply for those siblings whose
+ * instrumentId matches.
  *
  * Non-matching-instrument siblings are omitted entirely from the result so
  * the caller can blindly apply every returned update without a second check.
@@ -58,14 +56,12 @@ export interface BandSiblingUpdate {
  */
 export function computeBandAllocationUpdates(
   siblings: BandSiblingRequest[],
-  joiningInstrument: string,
+  joiningInstrumentId: number,
 ): BandSiblingUpdate[] {
-  const normalisedJoining = normaliseInstrument(joiningInstrument);
-  if (normalisedJoining.length === 0) return [];
+  if (joiningInstrumentId <= 0) return [];
   const updates: BandSiblingUpdate[] = [];
   for (const sib of siblings) {
-    const normalisedSib = normaliseInstrument(sib.instrument);
-    if (normalisedSib.length === 0 || normalisedSib !== normalisedJoining) {
+    if (sib.instrumentId <= 0 || sib.instrumentId !== joiningInstrumentId) {
       continue;
     }
     const { newSlotsFilled, shouldCloseRequest } = computeSlotOutcome(
