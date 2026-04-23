@@ -275,6 +275,11 @@ export const requestKindEnum = pgEnum('request_kind', [
   'night-at-venue',
   'promoter-for-venue-night',
   'band-for-musician',
+  // `band_join` (MUS-87): a user (typically from the onboarding "Join existing
+  // band" branch) asks to join a specific band. Anchor is the target band.
+  // Accept is authorised for any existing member of that band and inserts a
+  // `band_members` row for the requester.
+  'band_join',
 ]);
 
 export const requestStatusEnum = pgEnum('request_status', ['open', 'closed', 'cancelled']);
@@ -340,6 +345,15 @@ export type RequestDetails =
       instrument: string;
       availability?: string;
       demosUrl?: string;
+    }
+  // `band_join` (MUS-87): a user asks to join a specific band. `bandId` is
+  // the target band (also carried on the anchor column for join ergonomics).
+  // Accept/reject goes through dedicated `requests.respondToBandJoin` rather
+  // than the EoI machinery — any existing member of the target band is
+  // authorised to decide.
+  | {
+      kind: 'band_join';
+      bandId: number;
     };
 
 export type EoiDetails =

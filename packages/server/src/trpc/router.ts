@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getBandProfile, listBands, listMyBands } from '../bands/queries.js';
 import { db } from '../db.js';
@@ -31,7 +31,14 @@ import {
   listMyRequests,
   listOpenRequests,
 } from '../requests/queries.js';
-import { requestKindEnum, venues, type EoiDetails } from '../schema.js';
+import {
+  bandMembers,
+  bands,
+  requestKindEnum,
+  requests,
+  venues,
+  type EoiDetails,
+} from '../schema.js';
 import { protectedProcedure, publicProcedure, router } from './trpc.js';
 
 export const appRouter = router({
@@ -227,6 +234,13 @@ export const appRouter = router({
             availability: z.string().min(1).optional(),
             demosUrl: z.string().min(1).optional(),
           }),
+          // `band_join` (MUS-87): requester asks to join a specific band.
+          // Acceptance is authorised for any existing member of the target
+          // band and inserts the requester into `band_members`.
+          z.object({
+            kind: z.literal('band_join'),
+            bandId: z.number().int().positive(),
+          }),
         ]),
       )
       .mutation(async ({ ctx, input }) => {
@@ -312,9 +326,169 @@ export const appRouter = router({
           return createRequest(input, userId);
         }
 
+        if (input.kind === 'band_join') {
+          // band_join (MUS-87): requester asks to join a specific band. We
+          // verify the band exists so the row doesn't point at nothing, and
+          // reject up-front if the requester is already a member — that's a
+          // no-op request and worth a clear error rather than silently
+          // closing on accept.
+          const [band] = await db
+            .select({ id: bands.id })
+            .from(bands)
+            .where(eq(bands.id, input.bandId))
+            .limit(1);
+          if (!band) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Band not found' });
+          }
+          const alreadyMember = await isMemberOfBand(userId, input.bandId);
+          if (alreadyMember) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'You are already a member of this band',
+            });
+          }
+          return createRequest(input, userId);
+        }
+
         // band-for-musician: no gating beyond authentication. Free-text
         // instrument for this slice — MUS-68 swaps to the taxonomy.
         return createRequest(input, userId);
+      }),
+    // band_join response (MUS-87). Any existing member of the target band can
+    // accept or reject. Acceptance inserts the requester into `band_members`
+    // (idempotent via composite PK) and marks the request closed. Rejection
+    // closes the request without touching membership.
+    //
+    // Kept as a kind-specific procedure rather than overloading
+    // `expressionsOfInterest.respond` because the authority model differs:
+    // EoI respond gates on `req.source_user_id === callerUserId`, but the
+    // source of a `band_join` is the REQUESTER — we want any member of the
+    // target band to decide instead.
+    respondToBandJoin: protectedProcedure
+      .input(
+        z.object({
+          requestId: z.number().int().positive(),
+          decision: z.enum(['accepted', 'rejected']),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        return db.transaction(async (tx) => {
+          const [req] = await tx
+            .select({
+              id: requests.id,
+              kind: requests.kind,
+              status: requests.status,
+              sourceUserId: requests.source_user_id,
+              anchorBandId: requests.anchor_band_id,
+              details: requests.details,
+            })
+            .from(requests)
+            .where(eq(requests.id, input.requestId))
+            .limit(1);
+          if (!req) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
+          }
+          if (req.kind !== 'band_join' || req.details.kind !== 'band_join') {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'This request is not a band_join request',
+            });
+          }
+          if (req.status !== 'open') {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'Request is not open',
+            });
+          }
+          const targetBandId = req.anchorBandId ?? req.details.bandId;
+          // Any existing member of the target band is authorised to decide.
+          const [callerMembership] = await tx
+            .select({ user_id: bandMembers.user_id })
+            .from(bandMembers)
+            .where(
+              and(
+                eq(bandMembers.band_id, targetBandId),
+                eq(bandMembers.user_id, userId),
+              ),
+            )
+            .limit(1);
+          if (!callerMembership) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message:
+                'Only an existing member of the target band can respond to a band_join request',
+            });
+          }
+
+          const now = new Date();
+
+          if (input.decision === 'accepted') {
+            // Idempotent insert — composite PK collides on repeat and
+            // `onConflictDoNothing` swallows that cleanly. Mirrors the
+            // `musician-for-band` / `band-for-musician` acceptance pattern.
+            await tx
+              .insert(bandMembers)
+              .values({ band_id: targetBandId, user_id: req.sourceUserId })
+              .onConflictDoNothing();
+            await tx
+              .update(requests)
+              .set({
+                status: 'closed',
+                slots_filled: 1,
+                updated_at: now,
+              })
+              .where(eq(requests.id, req.id));
+            return { requestId: req.id, status: 'closed' as const };
+          }
+
+          // Rejected: close the request without touching membership.
+          await tx
+            .update(requests)
+            .set({ status: 'closed', updated_at: now })
+            .where(eq(requests.id, req.id));
+          return { requestId: req.id, status: 'closed' as const };
+        });
+      }),
+    // Cancel a request the caller authored (MUS-87). Usable for any kind but
+    // landed in this ticket because the band_join accept-path tests need a
+    // cancel path to exercise. Cancellation does NOT fire any membership or
+    // slot side-effects — it's a source-side withdrawal only.
+    cancel: protectedProcedure
+      .input(z.object({ requestId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        return db.transaction(async (tx) => {
+          const [req] = await tx
+            .select({
+              id: requests.id,
+              status: requests.status,
+              sourceUserId: requests.source_user_id,
+            })
+            .from(requests)
+            .where(eq(requests.id, input.requestId))
+            .limit(1);
+          if (!req) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
+          }
+          if (req.sourceUserId !== userId) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'Only the request author can cancel it',
+            });
+          }
+          if (req.status !== 'open') {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'Request is not open',
+            });
+          }
+          await tx
+            .update(requests)
+            .set({ status: 'cancelled', updated_at: new Date() })
+            .where(eq(requests.id, req.id));
+          return { requestId: req.id, status: 'cancelled' as const };
+        });
       }),
     list: protectedProcedure
       .input(z.object({ kind: z.enum(requestKindEnum.enumValues).optional() }))

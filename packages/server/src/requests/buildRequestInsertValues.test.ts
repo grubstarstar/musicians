@@ -281,4 +281,34 @@ describe('buildRequestInsertValues', () => {
       });
     });
   });
+
+  describe('band_join', () => {
+    it('maps a band_join input with bandId, anchors to the target band, slot_count 1', () => {
+      const input: RequestCreateInput = { kind: 'band_join', bandId: 17 };
+
+      expect(buildRequestInsertValues(input, 55)).toEqual({
+        kind: 'band_join',
+        source_user_id: 55,
+        anchor_band_id: 17,
+        anchor_gig_id: null,
+        details: { kind: 'band_join', bandId: 17 },
+        slot_count: 1,
+        slots_filled: 0,
+        status: 'open',
+      });
+    });
+
+    it('does not leak unknown input fields into details', () => {
+      const hostile = {
+        kind: 'band_join',
+        bandId: 1,
+        sneaky: 'should-not-leak',
+      } as unknown as RequestCreateInput;
+
+      const result = buildRequestInsertValues(hostile, 1);
+
+      expect(Object.keys(result.details).sort()).toEqual(['bandId', 'kind']);
+      expect(JSON.stringify(result)).not.toContain('sneaky');
+    });
+  });
 });

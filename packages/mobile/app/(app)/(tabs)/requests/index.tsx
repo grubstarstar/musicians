@@ -183,7 +183,8 @@ type RowDetails =
   | { kind: "gig-for-band"; bandId: number; targetDate: string; area?: string; feeAsked?: number }
   | { kind: "night-at-venue"; concept: string; possibleDates: string[] }
   | { kind: "promoter-for-venue-night"; venueId: number; proposedDate: string; concept?: string }
-  | { kind: "band-for-musician"; instrument: string; availability?: string; demosUrl?: string };
+  | { kind: "band-for-musician"; instrument: string; availability?: string; demosUrl?: string }
+  | { kind: "band_join"; bandId: number };
 
 interface RequestRowProps {
   id: number;
@@ -311,6 +312,19 @@ function rowContentFor(
         subtitle: details.availability ?? null,
         avatarUrl: null,
         accessibilityLabel: `Open musician looking for a band — ${details.instrument}`,
+      };
+    }
+    case "band_join": {
+      // MUS-87: a user asking to join a specific band. `band` (the anchor) is
+      // the target band; it's fine to reference the anchored row directly
+      // because `band_join` always sets `anchor_band_id`.
+      const title = band?.name ?? "A band";
+      return {
+        title,
+        pill: "Join request",
+        subtitle: null,
+        avatarUrl: band?.imageUrl ?? null,
+        accessibilityLabel: `Open request to join ${title}`,
       };
     }
   }
