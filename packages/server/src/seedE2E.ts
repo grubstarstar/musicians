@@ -36,6 +36,12 @@ import {
 export async function seedE2E(): Promise<void> {
   const passwordHash = await bcrypt.hash('password123', 12);
 
+  // users.roles (MUS-86) is the snapshot MUS-89's (app)/_layout.tsx guard
+  // reads to decide whether to route a cold-launched authenticated user to
+  // the onboarding wizard or to Home. All seedE2E users are post-onboarding
+  // fixtures, so they carry the appropriate role already — without this,
+  // every Maestro flow that logs in as a seeded user gets bounced to the
+  // role-picker on cold launch.
   const [gigtar] = await db
     .insert(users)
     .values({
@@ -43,6 +49,7 @@ export async function seedE2E(): Promise<void> {
       password_hash: passwordHash,
       firstName: 'Gigtar',
       lastName: null,
+      roles: ['musician'],
     })
     .returning({ id: users.id });
 
@@ -53,6 +60,7 @@ export async function seedE2E(): Promise<void> {
       password_hash: passwordHash,
       firstName: 'Sesh',
       lastName: null,
+      roles: ['musician'],
     })
     .returning({ id: users.id });
 
@@ -102,6 +110,7 @@ export async function seedE2E(): Promise<void> {
       password_hash: passwordHash,
       firstName: null,
       lastName: null,
+      roles: ['promoter'],
     })
     .returning({ id: users.id });
 
