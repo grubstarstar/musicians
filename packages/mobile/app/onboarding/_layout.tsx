@@ -26,6 +26,12 @@ export default function OnboardingLayout() {
       <Stack.Screen name="role-picker" />
       <Stack.Screen name="musician" />
       <Stack.Screen name="promoter" />
+      {/*
+        MUS-91: placeholder destination for the "Join existing promoter
+        group" option on promoter step-2. Sibling ticket replaces it with
+        the real picker / request form.
+      */}
+      <Stack.Screen name="promoter-join" />
     </Stack>
   );
 }
