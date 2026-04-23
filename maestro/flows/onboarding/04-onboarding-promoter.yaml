@@ -1,0 +1,201 @@
+appId: com.musicians.app
+---
+# Flow 04 of the onboarding e2e journey (MUS-91).
+# Entry state: flow 01 (01-signup.yaml) has run — "newbie" account exists in
+# the test DB with password "abcd1234" and roles=[].
+#
+# What this flow exercises:
+#   - Launch with clearKeychain to wipe any stale token.
+#   - Log in as newbie (roles=[] → app guard redirects to /onboarding/role-picker).
+#   - Assert the role-picker screen is visible.
+#   - Verify Next is disabled before any tile is selected (no-op tap guard).
+#   - Tap "As a promoter" tile.
+#   - Confirm "As a promoter" is visible and Next becomes tappable.
+#   - Tap Next and assert we land on the promoter step-2 screen.
+#   - Verify Next is disabled on step-2 before any option is selected.
+#   --- Option A: Create a promoter group ---
+#   - Tap the "Create a promoter group" tile → tap Next → assert create-entity
+#     screen appears (create-entity-heading testID).
+#   - Go back via create-entity-back → assert step-2 is still showing with
+#     "Create a promoter group" still selected (selection survives back-and-return).
+#   --- Option B: I'm a solo promoter ---
+#   - Tap the "I'm a solo promoter" tile → tap Next → assert create-entity screen.
+#   - Go back via create-entity-back → assert step-2 is still showing.
+#   --- Option C: Join existing promoter group ---
+#   - Tap the "Join existing promoter group" tile → tap Next → assert the
+#     placeholder screen appears (onboarding-promoter-join-placeholder testID).
+#   - Tap onboarding-promoter-join-back → assert step-2 is still showing.
+
+# Re-launch the app with clearKeychain so any stale SecureStore token from a
+# previous run is wiped before the auth context fires. clearKeychain: true does
+# NOT wipe the dev-client's saved server URL (NSUserDefaults), so Metro survives.
+- launchApp:
+    clearKeychain: true
+
+# Allow the app's animation/initialization phase to complete before querying
+# the accessibility tree. Without this, XCTest can return kAXErrorInvalidUIElement
+# (HTTP 500) and crash the subsequent conditional-logout check.
+- waitForAnimationToEnd
+
+# Belt-and-braces: if some other state survives (e.g. a previous run that did
+# not use keychain storage), log out before logging in as newbie.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# Wait for the login screen. clearKeychain wiped the token so the app shows
+# the login screen. Cold bundle fetch can take 20-40s.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# Log in as newbie. Flow 01 created this account with password "abcd1234".
+# After login, newbie has roles=[] so the (app)/_layout.tsx guard redirects
+# to /onboarding/role-picker rather than Home.
+- tapOn:
+    id: "login-username"
+- inputText: "newbie"
+- tapOn:
+    id: "login-password"
+- inputText: "abcd1234"
+- tapOn:
+    id: "login-submit"
+
+# Wait for the role-picker screen. The auth guard checks roles.length === 0
+# and issues Redirect href="/onboarding/role-picker".
+- extendedWaitUntil:
+    visible: "What brings you here?"
+    timeout: 30000
+
+# Belt-and-braces: confirm we are on the role-picker via its root testID.
+- assertVisible:
+    id: "onboarding-role-picker"
+
+# Verify client-side guard: Next must be disabled before any tile is selected.
+# A tap on a disabled Pressable is a no-op — screen remains on the role-picker.
+- tapOn:
+    id: "onboarding-role-next"
+- assertVisible: "What brings you here?"
+
+# Tap the "As a promoter" radio tile. Prefer visible text (most resilient
+# selector) — the child text node renders the label reliably on iOS.
+- tapOn: "As a promoter"
+
+# Confirm "As a promoter" is visible (tile label text is in the a11y tree as a
+# child element even though the container is a composite GenericElement).
+- assertVisible: "As a promoter"
+
+# Tap Next — the button is now enabled (a role has been selected). The mutation
+# fires, sets the role server-side, and router.replace navigates to
+# /onboarding/promoter on success.
+- tapOn:
+    id: "onboarding-role-next"
+
+# Assert we have arrived on the promoter step-2 screen via its root testID.
+- assertVisible:
+    id: "onboarding-promoter-step2"
+
+# Verify Next is disabled before any option is selected. The Next button's
+# accessibilityState.disabled=true until a tile is tapped. A tap on a disabled
+# Pressable is a no-op (confirmed in HANDOFF note). The step-2 root must still
+# be visible after this tap.
+- tapOn:
+    id: "onboarding-promoter-step2-next"
+- assertVisible:
+    id: "onboarding-promoter-step2"
+
+# =============================================================================
+# Option A: Create a promoter group
+# =============================================================================
+# Tap the first radio tile. testID used — the tile is a composite GenericElement
+# and Maestro substring-matching on composite labels is unreliable (established
+# project quirk; same as kind-tiles in the Post Request flow).
+- tapOn:
+    id: "onboarding-promoter-step2-create-group"
+
+# Confirm the label text is visible (the tile renders its label as a child
+# text node even though the container is a composite element).
+- assertVisible: "Create a promoter group"
+
+# Tap Next. Routes to /create-entity?entityType=promoterGroup&memberMode=promoterGroup.
+# Uses router.push so a back gesture returns to this screen.
+- tapOn:
+    id: "onboarding-promoter-step2-next"
+
+# Assert we have arrived on the create-entity screen (MUS-92 screen).
+- extendedWaitUntil:
+    visible:
+      id: "create-entity-heading"
+    timeout: 15000
+
+# Go back via the create-entity back button to return to promoter step-2.
+- tapOn:
+    id: "create-entity-back"
+
+# Assert step-2 is still showing — the router.push means the back stack lands
+# here, not on the role-picker.
+- assertVisible:
+    id: "onboarding-promoter-step2"
+
+# Assert the "Create a promoter group" tile is still highlighted (selection
+# survives back-and-return — AC requirement). Checking for the visible label
+# text is the most resilient selector here.
+- assertVisible: "Create a promoter group"
+
+# =============================================================================
+# Option B: I'm a solo promoter
+# =============================================================================
+# Tap the third tile (solo). testID preferred — composite element.
+- tapOn:
+    id: "onboarding-promoter-step2-solo"
+
+- assertVisible: "I'm a solo promoter"
+
+# Tap Next. Routes to /create-entity?entityType=promoterGroup&memberMode=solo.
+- tapOn:
+    id: "onboarding-promoter-step2-next"
+
+# Assert we have arrived on the create-entity screen.
+- extendedWaitUntil:
+    visible:
+      id: "create-entity-heading"
+    timeout: 15000
+
+# Go back to step-2.
+- tapOn:
+    id: "create-entity-back"
+
+# Assert step-2 is still showing with the solo tile still selected.
+- assertVisible:
+    id: "onboarding-promoter-step2"
+- assertVisible: "I'm a solo promoter"
+
+# =============================================================================
+# Option C: Join existing promoter group
+# =============================================================================
+# Tap the second tile. testID preferred — composite element.
+- tapOn:
+    id: "onboarding-promoter-step2-join-group"
+
+- assertVisible: "Join existing promoter group"
+
+# Tap Next. Routes to /onboarding/promoter-join (placeholder screen owned by
+# a sibling ticket — we assert the placeholder's root testID, not real content).
+- tapOn:
+    id: "onboarding-promoter-step2-next"
+
+# Assert we have arrived on the join-group placeholder screen. The HANDOFF
+# confirms this testID is on the placeholder's root SafeAreaView.
+- assertVisible:
+    id: "onboarding-promoter-join-placeholder"
+
+# Go back via the placeholder's back button. Returns to step-2.
+- tapOn:
+    id: "onboarding-promoter-join-back"
+
+# Assert step-2 is still showing with the join-group tile still selected
+# (selection survives back-and-return).
+- assertVisible:
+    id: "onboarding-promoter-step2"
+- assertVisible: "Join existing promoter group"
