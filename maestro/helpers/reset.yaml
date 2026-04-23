@@ -1,6 +1,9 @@
 appId: com.musicians.app
 ---
-# Wipe the test DB and reseed the minimal fixture (gigtar, sesh, The Testers).
+# Wipe the test DB and reseed the seedE2E fixture. seedE2E grows piecewise
+# per journey — currently gigtar, sesh, The Testers (request-to-join) plus
+# promoter1, Test Promotions, Test Hall (promoter-home, MUS-97). See
+# packages/server/src/seedE2E.ts for the authoritative list.
 # Runs as a runScript step (not a runFlow) because it's a pure HTTP call —
 # no UI assertions to make. The script asserts a 200 so the rest of the
 # journey stops loudly if the test server isn't running on 3002.
