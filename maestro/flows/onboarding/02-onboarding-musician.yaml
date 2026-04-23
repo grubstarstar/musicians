@@ -1,6 +1,6 @@
 appId: com.musicians.app
 ---
-# Flow 02 of the onboarding e2e journey (MUS-89).
+# Flow 02 of the onboarding e2e journey (MUS-89, extended in MUS-92).
 # Entry state: flow 01 (01-signup.yaml) has run — "newbie" is signed in and
 # the app is sitting on the role-picker screen ("What brings you here?").
 # This flow exercises the musician path through the role-picker:
@@ -9,6 +9,13 @@ appId: com.musicians.app
 #   - Tap "As a musician" tile.
 #   - Verify Next is now enabled.
 #   - Tap Next and assert the app navigates to the musician step-2 screen.
+# MUS-92 extension: exercises the create-entity sub-flow for bands and solo
+# artists. Because the musician step-2 screen (MUS-90) has not yet landed, the
+# create-entity screen is reached via deep-link in both sub-flows. Once MUS-90
+# lands, these steps remain correct — the screen URI is the same either way.
+#   Band-mode:  name input → submit → band profile with "Add members" CTA →
+#               dismiss CTA → CTA gone.
+#   Solo-mode:  name input → submit → band profile without "Add members" CTA.
 
 # Re-launch the app so we start from a stable foreground state.
 # No clearState — that wipes the dev-client's saved server URL.
@@ -55,3 +62,118 @@ appId: com.musicians.app
 # and testID are guaranteed to remain.
 - assertVisible:
     id: "onboarding-musician-stub"
+
+# =============================================================================
+# MUS-92: Name-first create sub-flow — band mode
+# =============================================================================
+# The musician step-2 screen (MUS-90) is not yet landed on main, so there is no
+# in-app navigation path from /onboarding/musician to /create-entity. We drive
+# the create-entity screen directly via deep-link, which is the pattern the
+# HANDOFF explicitly endorses: "qa-automate flows should drive the screen via
+# deep-link until those land."
+# The Expo app is registered under the slug "musicians", so the scheme is
+# musicians://. Expo Router strips route-group path segments ((app)/(tabs)/(stack))
+# and resolves "create-entity" as the file-based route directly.
+- openLink: "musicians://create-entity?entityType=band&memberMode=band"
+
+# Wait for the create-entity form to appear. The screen heading testID is the
+# most stable anchor — it is always visible above the fold regardless of
+# entityType/memberMode (the text changes but the testID stays fixed).
+- extendedWaitUntil:
+    visible:
+      id: "create-entity-heading"
+    timeout: 15000
+
+# Verify the submit button is disabled before any name is entered.
+# A tap on a disabled Pressable is a no-op; the heading should still be visible.
+- tapOn:
+    id: "create-entity-submit"
+- assertVisible:
+    id: "create-entity-heading"
+
+# Enter a band name. The input is autofocused on mount but we tap the testID
+# explicitly to be safe (a deep-link navigation sometimes shifts focus).
+- tapOn:
+    id: "create-entity-name-input"
+- inputText: "The Testers (E2E Band)"
+
+# Dismiss the keyboard by tapping the screen heading.
+# hideKeyboard is unreliable on React Native — tapping a non-interactive element
+# is the established project workaround (see INSTRUMENTS tap in flow 03).
+# The heading is a Text node whose testID resolves to a non-interactive element.
+- tapOn:
+    id: "create-entity-heading"
+
+# Submit the form. The submit button is now enabled (trimmed name is non-empty).
+# On success, bands.create runs in a transaction, then router.replace navigates
+# to /band/<id>?new=1. The ?new=1 flag is stripped on first render via
+# router.setParams, so we must NOT assert on the URL; assert the CTA instead.
+- tapOn:
+    id: "create-entity-submit"
+
+# Assert the band profile is showing with the "Add members" CTA card.
+# The CTA is visible only when (a) ?new=1 was present at mount AND (b) the
+# viewer is the entity creator. newbie just created this band so both conditions
+# hold. We allow up to 10s for the tRPC mutation + navigation to settle.
+- extendedWaitUntil:
+    visible:
+      id: "add-members-cta"
+    timeout: 10000
+
+# Verify the card contains the "Add members" label (visible text check as a
+# belt-and-braces assertion alongside the testID).
+- assertVisible: "Add members"
+
+# Dismiss the CTA via the close button. After dismissal the card is removed from
+# the render tree — it must not reappear on this screen visit.
+- tapOn:
+    id: "add-members-cta-dismiss"
+
+# Assert the CTA is no longer visible. assertNotVisible uses the testID directly.
+# (Maestro assertNotVisible with an id selector checks absence from the a11y tree.)
+- assertNotVisible:
+    id: "add-members-cta"
+
+# =============================================================================
+# MUS-92: Name-first create sub-flow — solo mode
+# =============================================================================
+# In memberMode=solo the entity is created with exactly one member and the app
+# navigates to the band profile WITHOUT ?new=1. Therefore the "Add members" CTA
+# must NOT appear. We verify this by entering a name, submitting, and asserting
+# the CTA is absent.
+- openLink: "musicians://create-entity?entityType=band&memberMode=solo"
+
+# Wait for the create-entity form again. The heading testID is always present
+# regardless of memberMode.
+- extendedWaitUntil:
+    visible:
+      id: "create-entity-heading"
+    timeout: 15000
+
+# Enter a solo artist name. Use a distinct name from the band-mode run so the
+# two profiles are clearly separate in the test fixture (no uniqueness constraint
+# exists, but a distinct name makes failures easier to diagnose).
+- tapOn:
+    id: "create-entity-name-input"
+- inputText: "Newbie Solo"
+
+# Dismiss keyboard via the heading before submitting.
+- tapOn:
+    id: "create-entity-heading"
+
+# Submit. For memberMode=solo the procedure routes to /band/<id> without ?new=1.
+# The Add members CTA must therefore never appear.
+- tapOn:
+    id: "create-entity-submit"
+
+# Wait for the band profile to load. The band profile will show the entity name
+# as visible text — asserting that confirms navigation succeeded and the correct
+# profile is showing.
+- extendedWaitUntil:
+    visible: "Newbie Solo"
+    timeout: 10000
+
+# Assert the "Add members" CTA is absent. This is the key AC assertion for
+# solo mode: memberMode=solo → no ?new=1 → CTA card not rendered.
+- assertNotVisible:
+    id: "add-members-cta"
