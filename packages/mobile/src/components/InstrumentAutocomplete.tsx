@@ -101,9 +101,7 @@ export function InstrumentAutocomplete({
           disabled && styles.fieldDisabled,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={
-          text.length > 0 ? `Instrument: ${text}` : "Select instrument"
-        }
+        accessibilityLabel={text.length > 0 ? text : "Select instrument"}
         accessibilityState={{ disabled: !!disabled }}
       >
         <Text
