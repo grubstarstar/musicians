@@ -140,20 +140,11 @@ function PromoterGroupRowView({
     // asserts the row's visibility) keeps working, and the MUS-100 flow taps
     // the same id to navigate. `router.push` (not `navigate`) so the back
     // gesture returns to PromoterHome without replacing history.
-    // A Pressable with an accessibilityLabel becomes a single a11y element on
-    // iOS — child <Text> nodes are no longer exposed to VoiceOver (or Maestro).
-    // So the label is composed from everything visually present in the row, so
-    // screen-reader users hear the same info as sighted users.
     <Pressable
       testID={`promoter-group-row-${group.id}`}
       onPress={() => router.push(`/promoter-group/${group.id}`)}
       accessibilityRole="button"
-      accessibilityLabel={[
-        `Open ${group.name}`,
-        ...(group.venues.length === 0
-          ? ["No venues yet"]
-          : group.venues.flatMap((v) => [v.name, v.address])),
-      ].join(". ")}
+      accessibilityLabel={`Open ${group.name}`}
       style={({ pressed }) => [
         styles.groupRow,
         !isLast && styles.groupRowBorder,
