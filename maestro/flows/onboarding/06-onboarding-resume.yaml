@@ -63,9 +63,14 @@ appId: com.musicians.app
     id: "login-submit"
 
 # The onboarding gate resolves before the home screen mounts. newbie has no
-# roles, so the gate redirects to the role-picker. The role-picker heading is
-# the most specific stable text on that screen.
-- assertVisible: "What is your role?"
+# roles, so the gate redirects to the role-picker. Use the screen's root
+# testID — more stable than heading text (the heading copy is
+# "What brings you here?", already covered by flows 01 & 02; asserting the
+# testID keeps this flow robust against heading copy changes).
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-role-picker"
+    timeout: 10000
 
 # Log out via the back-route: role-picker is inside the onboarding group, not
 # the (app) drawer group, so "Open profile menu" is not available. Navigate to
@@ -95,8 +100,11 @@ appId: com.musicians.app
 
 # The gate sees: role=musician, no band_members row, no session-musician
 # profile, no pending band_join request → redirects to musician step-2.
-# Assert the step-2 heading for a musician.
-- assertVisible: "You're a musician"
+# Assert the step-2 screen's root testID (same anchor flow 02 uses).
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-musician-step2"
+    timeout: 10000
 
 - launchApp:
     clearKeychain: true
@@ -120,8 +128,12 @@ appId: com.musicians.app
     id: "login-submit"
 
 # The gate sees: role=promoter, no promoter_group_members row, no pending
-# promoter_group_join request → redirects to promoter step-2.
-- assertVisible: "You're a promoter"
+# promoter_group_join request → redirects to promoter step-2. Assert the
+# step-2 screen's root testID (same anchor flow 04 uses).
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-promoter-step2"
+    timeout: 10000
 
 - launchApp:
     clearKeychain: true
