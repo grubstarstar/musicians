@@ -1,6 +1,6 @@
 appId: com.musicians.app
 ---
-# Flow 05 of the onboarding e2e journey (MUS-94).
+# Flow 06 of the onboarding e2e journey (MUS-94).
 # Entry state: seedE2E fixture re-seeded at the start (reset.yaml).
 # Depends on: none — safe to run in isolation.
 #
