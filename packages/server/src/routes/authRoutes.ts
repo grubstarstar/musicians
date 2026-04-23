@@ -28,9 +28,16 @@ authRoutes.post('/login', async (c) => {
     return c.json({ error: 'Invalid credentials' }, 401);
   }
 
-  const token = await signToken({ sub: String(user.id), username: user.username });
+  // MUS-86: bake the user's roles into the token so clients can read them
+  // without a round-trip to /me. Snapshots at login time; when roles change,
+  // the next login (or /me re-fetch) refreshes them.
+  const token = await signToken({
+    sub: String(user.id),
+    username: user.username,
+    roles: user.roles,
+  });
   c.header('Set-Cookie', buildSetCookieHeader(token));
-  return c.json({ username: user.username, token });
+  return c.json({ username: user.username, roles: user.roles, token });
 });
 
 authRoutes.post('/logout', (c) => {
@@ -51,7 +58,7 @@ authRoutes.get('/me', async (c) => {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  return c.json({ username: payload.username });
+  return c.json({ username: payload.username, roles: payload.roles });
 });
 
 export default authRoutes;

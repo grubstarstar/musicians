@@ -78,6 +78,13 @@
       "when": 1777050000000,
       "tag": "0010_band_join_request_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777100000000,
+      "tag": "0011_users_roles_column",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,11 @@ export const users = pgTable('users', {
   password_hash: text('password_hash').notNull(),
   firstName: text('firstName'),
   lastName: text('lastName'),
+  // MUS-86: multi-role set carried on the user row. Free text for now (see
+  // ticket — enum validation is deliberately out of scope until abuse
+  // appears). Defaults to '{}' so existing rows need no data migration. The
+  // auth token payload and tRPC `ctx.user.roles` are wired from this column.
+  roles: text('roles').array().notNull().default([]),
 });
 
 export const bands = pgTable('bands', {
