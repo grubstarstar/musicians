@@ -11,14 +11,14 @@ appId: com.musicians.app
 #     to the signup screen.
 #   - Assert the signup screen is visible (signup-username field present).
 #   - Confirm submit is disabled before filling the form (noop tap).
-#   - Enter a fresh username that does not collide with any seedE2E user.
+#   - Enter a fresh username ("signupguy") that does not collide with any seedE2E user.
 #   - Enter a password of exactly 8 characters (minimum required).
 #   - Tap signup-submit (now enabled) to register.
 #   - Assert the app reaches the post-auth home screen ("Hello <username>").
 
 # Reset the test DB to the seedE2E fixture before any UI interaction.
 # This wipes any leftover account from a previous run and reseeds the known
-# fixture, so the signup username ("newbie") will not already exist.
+# fixture, so the signup username ("signupguy") will not already exist.
 - runFlow: ../../helpers/reset.yaml
 
 # Bring the app to the foreground in a known state. No clearState — that wipes
@@ -64,11 +64,11 @@ appId: com.musicians.app
     id: "signup-username"
 
 # Enter a fresh username that does not collide with any seedE2E fixture user
-# (gigtar / sesh / promoter1). "newbie" is safe — reset.yaml truncates all
-# non-fixture users before each run.
+# (gigtar / sesh / newbie / promoter1). "signupguy" is safe — reset.yaml
+# truncates all non-fixture users before each run.
 - tapOn:
     id: "signup-username"
-- inputText: "newbie"
+- inputText: "signupguy"
 
 # Dismiss the keyboard by tapping the label above the field. `hideKeyboard`
 # is unreliable on React Native inputs — tap a non-interactive element instead
