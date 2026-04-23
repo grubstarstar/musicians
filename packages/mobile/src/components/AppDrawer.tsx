@@ -1,4 +1,5 @@
 import type { DrawerContentComponentProps } from "@react-navigation/drawer";
+import { useRouter } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -10,12 +11,21 @@ import {
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { user, currentContext, setCurrentContext } = useUser();
   const { logout } = useAuth();
+  const router = useRouter();
   const displayName = user.firstName ?? user.username;
   const showSwitcher = user.availableContexts.length > 1;
 
   function handleSelect(next: UserContextType) {
     setCurrentContext(next);
     props.navigation.closeDrawer();
+  }
+
+  function handleEditProfile() {
+    // MUS-93: reuse the onboarding screen for later edits. `?mode=edit`
+    // switches the screen into "load existing row, save changes" copy and
+    // preloads the profile fields under a <QueryBoundary>.
+    props.navigation.closeDrawer();
+    router.navigate("/onboarding/session-musician?mode=edit");
   }
 
   async function handleLogout() {
@@ -57,6 +67,15 @@ export function AppDrawer(props: DrawerContentComponentProps) {
       )}
 
       <View style={styles.spacer} />
+
+      <TouchableOpacity
+        testID="drawer-edit-profile"
+        style={styles.editProfile}
+        onPress={handleEditProfile}
+        accessibilityRole="button"
+      >
+        <Text style={styles.editProfileLabel}>Edit profile</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.logout}
@@ -111,6 +130,12 @@ const styles = StyleSheet.create({
   },
   rowLabel: { color: "#fff", fontSize: 16 },
   spacer: { flex: 1 },
+  editProfile: {
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#2a2a30",
+  },
+  editProfileLabel: { color: "#fff", fontSize: 16, fontWeight: "600" },
   logout: {
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
