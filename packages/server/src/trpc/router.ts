@@ -189,6 +189,25 @@ export const appRouter = router({
         return addUserRole(userId, input.role);
       }),
   }),
+  // MUS-95: post-onboarding user mutations. `addRole` is the settings-side
+  // entry point for appending a second role to `users.roles` (e.g. a promoter
+  // adding `musician` later). Delegates to the same idempotent `addUserRole`
+  // helper that backs `onboarding.setRole` — kept as a sibling router under
+  // `users` rather than overloading `onboarding` because semantically this is
+  // a settings action, not part of the first-run wizard.
+  //
+  // Idempotency: reposting the same role is a no-op and returns the current
+  // `roles` array. The client can safely retry on a network blip without
+  // risking duplicate entries. (The underlying helper also guards against
+  // concurrent appends via a Postgres `array_position IS NULL` predicate.)
+  users: router({
+    addRole: protectedProcedure
+      .input(z.object({ role: z.enum(ONBOARDING_ROLES) }))
+      .mutation(({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        return addUserRole(userId, input.role);
+      }),
+  }),
   // Musician profiles (MUS-85). Per-user musician data kept in `musician_profiles`
   // as a 1:1 companion to `users`. `get` is public so future discovery UIs can
   // look up anyone's profile by id; `upsertMine` is strictly caller-keyed —

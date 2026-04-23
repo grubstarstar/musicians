@@ -28,6 +28,15 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     router.navigate("/onboarding/session-musician?mode=edit");
   }
 
+  function handleOpenSettings() {
+    // MUS-95: settings screen houses the "Add role" action (and will grow to
+    // hold further settings actions in follow-up tickets). `navigate` rather
+    // than `push` so repeated taps don't stack duplicate settings screens on
+    // the back stack — matches how the drawer handles the edit-profile row.
+    props.navigation.closeDrawer();
+    router.navigate("/settings");
+  }
+
   async function handleLogout() {
     // Close the drawer first so the user sees it dismiss while logout runs.
     // AuthContext flips status -> unauthenticated, the (app) layout re-renders
@@ -75,6 +84,15 @@ export function AppDrawer(props: DrawerContentComponentProps) {
         accessibilityRole="button"
       >
         <Text style={styles.editProfileLabel}>Edit profile</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        testID="drawer-settings"
+        style={styles.settings}
+        onPress={handleOpenSettings}
+        accessibilityRole="button"
+      >
+        <Text style={styles.settingsLabel}>Settings</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -136,6 +154,12 @@ const styles = StyleSheet.create({
     borderTopColor: "#2a2a30",
   },
   editProfileLabel: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  settings: {
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#2a2a30",
+  },
+  settingsLabel: { color: "#fff", fontSize: 16, fontWeight: "600" },
   logout: {
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
