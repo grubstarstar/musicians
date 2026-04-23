@@ -75,5 +75,11 @@ appId: com.musicians.app
 - assertVisible: "Open Test Promotions"
 
 # Assert the seeded venue linked to "Test Promotions" is visible underneath the
-# group row. Same text-over-id rationale as above.
+# group row. Because the row is a Pressable with a composed accessibilityLabel
+# (MUS-100) that includes every child text, "Test Hall" matches substring-wise
+# on that label.
 - assertVisible: "Test Hall"
+
+# Leave the app in a known logged-out state so the next flow in the journey
+# starts from the login screen without racing its own conditional logout.
+- runFlow: ../../helpers/logout.yaml
