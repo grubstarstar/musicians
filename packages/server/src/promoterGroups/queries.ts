@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db.js';
+import type { CreateEntityResult } from '../onboarding/createEntityResult.js';
 import {
   promoterGroups,
   promoterGroupsVenues,
@@ -94,4 +95,65 @@ export async function listMyPromoterGroups(
     .orderBy(asc(venues.name));
 
   return groupVenuesByPromoterGroup(myGroups, venueRows);
+}
+
+/**
+ * Creates a promoter group with the caller as the first (and, in `solo`
+ * mode, only) member. Used by the MUS-92 name-first create flow from the
+ * onboarding wizard.
+ *
+ * Sequence (all in a single transaction so a partial state is impossible):
+ *   1. Ensure the caller has a `user_roles` row with role='promoter'. The
+ *      promoters_promoter_groups join table FKs to `user_roles.id`, not
+ *      `users.id`, so the role row must exist before the membership row can
+ *      be inserted. Idempotent via the (user_id, role) unique index.
+ *   2. Insert the promoter_groups row, recording `created_by_user_id` so the
+ *      profile screen can gate the "Add members" CTA to the creator only.
+ *   3. Insert the promoters_promoter_groups membership row linking the
+ *      promoter user_role to the new group.
+ *
+ * Returns `{ id, memberMode: 'promoterGroup' }`. The caller (the procedure)
+ * narrows `memberMode` to `'solo'` when the input mode requested it — this
+ * helper always returns `'promoterGroup'` so it stays single-purpose.
+ */
+export async function createPromoterGroupWithCreator(
+  input: { name: string },
+  creatorUserId: number,
+): Promise<CreateEntityResult> {
+  return db.transaction(async (tx) => {
+    // Idempotent role grant — `user_roles_user_id_role_uq` swallows repeat
+    // inserts via `onConflictDoNothing`. We then read the row id back rather
+    // than relying on `.returning()` from the upsert (returning is empty when
+    // the conflict path is taken).
+    await tx
+      .insert(userRoles)
+      .values({ user_id: creatorUserId, role: 'promoter' })
+      .onConflictDoNothing();
+    const [promoterRole] = await tx
+      .select({ id: userRoles.id })
+      .from(userRoles)
+      .where(
+        and(eq(userRoles.user_id, creatorUserId), eq(userRoles.role, 'promoter')),
+      )
+      .limit(1);
+    // The insert+select must produce a row — the unique index guarantees
+    // exactly one promoter row per user. Fail loudly if Postgres surprises us.
+    if (!promoterRole) {
+      throw new Error(
+        'createPromoterGroupWithCreator: promoter user_role row missing after upsert',
+      );
+    }
+
+    const [inserted] = await tx
+      .insert(promoterGroups)
+      .values({ name: input.name, created_by_user_id: creatorUserId })
+      .returning({ id: promoterGroups.id });
+
+    await tx.insert(promotersPromoterGroups).values({
+      user_role_id: promoterRole.id,
+      promoter_group_id: inserted.id,
+    });
+
+    return { id: inserted.id, memberMode: 'promoterGroup' };
+  });
 }

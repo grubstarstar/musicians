@@ -7,15 +7,30 @@ import {
 } from './shapePromoterGroupDetail.js';
 
 describe('shapePromoterGroupDetail', () => {
-  const group: PromoterGroupBaseRow = { id: 1, name: 'Alpha Presents' };
+  const group: PromoterGroupBaseRow = {
+    id: 1,
+    name: 'Alpha Presents',
+    createdByUserId: null,
+  };
 
   it('returns the group shape with empty arrays when there are no venues or members', () => {
     expect(shapePromoterGroupDetail(group, [], [])).toEqual({
       id: 1,
       name: 'Alpha Presents',
+      createdByUserId: null,
       venues: [],
       members: [],
     });
+  });
+
+  it('carries createdByUserId through unchanged when set', () => {
+    const groupWithCreator: PromoterGroupBaseRow = {
+      id: 2,
+      name: 'Bravo Promotions',
+      createdByUserId: 42,
+    };
+    const result = shapePromoterGroupDetail(groupWithCreator, [], []);
+    expect(result.createdByUserId).toBe(42);
   });
 
   it('projects venues to { id, name, address } and preserves caller order', () => {

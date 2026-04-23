@@ -1,7 +1,12 @@
 import { TRPCError } from '@trpc/server';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { getBandProfile, listBands, listMyBands } from '../bands/queries.js';
+import {
+  createBandWithCreator,
+  getBandProfile,
+  listBands,
+  listMyBands,
+} from '../bands/queries.js';
 import { db } from '../db.js';
 import {
   countOpenSlots,
@@ -17,6 +22,7 @@ import {
 import { addUserRole, ONBOARDING_ROLES } from '../onboarding/queries.js';
 import { getPromoterGroupDetail } from '../promoterGroups/getPromoterGroupDetail.js';
 import {
+  createPromoterGroupWithCreator,
   isMemberOfPromoterGroup,
   listMyPromoterGroups,
 } from '../promoterGroups/queries.js';
@@ -75,6 +81,31 @@ export const appRouter = router({
         }
         return profile;
       }),
+    // MUS-92: name-first create from the onboarding wizard. The caller is
+    // recorded as both `created_by_user_id` (used by the profile screen to
+    // gate the "Add members" CTA) and the first `band_members` row. The
+    // mutation is the same for `band` and `solo` modes — the membership
+    // shape is identical (single member to start) and the *only* difference
+    // is whether the mobile post-create router appends `?new=1` to the
+    // resulting profile URL. We echo `memberMode` back so the client can
+    // make that routing decision in one round trip.
+    create: protectedProcedure
+      .input(
+        z.object({
+          name: z
+            .string()
+            .trim()
+            .min(1, 'Name is required'),
+          memberMode: z.enum(['band', 'solo']),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        const result = await createBandWithCreator({ name: input.name }, userId);
+        // The helper always returns memberMode='band'; rewrite to the
+        // caller-supplied mode so the mobile router can branch on it.
+        return { id: result.id, memberMode: input.memberMode };
+      }),
   }),
   rehearsals: router({
     // Public for now per MUS-48; will flip to protectedProcedure in a later ticket.
@@ -114,6 +145,32 @@ export const appRouter = router({
           });
         }
         return detail;
+      }),
+    // MUS-92: name-first create from the onboarding wizard's "Create a
+    // promoter group" / "I'm a solo promoter" branches. The mutation grants
+    // the caller the `promoter` role if they don't have one, inserts the
+    // group with `created_by_user_id` set, and links the caller as the
+    // first member through `promoters_promoter_groups`. `memberMode` is
+    // restricted to `'promoterGroup' | 'solo'` here — `'band'` is rejected
+    // up front so the discriminated mode space stays well-typed across
+    // callers and screen branches.
+    create: protectedProcedure
+      .input(
+        z.object({
+          name: z
+            .string()
+            .trim()
+            .min(1, 'Name is required'),
+          memberMode: z.enum(['promoterGroup', 'solo']),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        const result = await createPromoterGroupWithCreator(
+          { name: input.name },
+          userId,
+        );
+        return { id: result.id, memberMode: input.memberMode };
       }),
   }),
   // Onboarding (MUS-89). Thin surface for the first-run wizard — currently

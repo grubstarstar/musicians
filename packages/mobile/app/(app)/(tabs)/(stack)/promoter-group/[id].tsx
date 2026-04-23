@@ -1,6 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { QueryBoundary } from "../../../../../src/components/QueryBoundary";
@@ -22,25 +23,48 @@ import { trpc } from "../../../../../src/trpc";
  * renders this same screen whether arrived at via row tap or direct URL.
  */
 export default function PromoterGroupScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, new: newParam } = useLocalSearchParams<{
+    id: string;
+    new?: string;
+  }>();
   const parsedId = Number(id);
 
   if (!Number.isInteger(parsedId) || parsedId <= 0) {
     return <PromoterGroupNotFound />;
   }
 
+  // MUS-92: see the band screen comment block — captured once at mount,
+  // stripped from the URL so re-navigation never re-shows the CTA.
+  const isNewGroup = newParam === "1";
+
   return (
     <QueryBoundary notFoundFallback={<PromoterGroupNotFound />}>
-      <PromoterGroupScreenInner id={parsedId} />
+      <PromoterGroupScreenInner id={parsedId} initialIsNewGroup={isNewGroup} />
     </QueryBoundary>
   );
 }
 
-function PromoterGroupScreenInner({ id }: { id: number }) {
+function PromoterGroupScreenInner({
+  id,
+  initialIsNewGroup,
+}: {
+  id: number;
+  initialIsNewGroup: boolean;
+}) {
   const router = useRouter();
   const { data } = useSuspenseQuery(
     trpc.promoterGroups.get.queryOptions({ id }),
   );
+  const { data: me } = useSuspenseQuery(trpc.system.whoami.queryOptions());
+
+  const [showAddMembersCta, setShowAddMembersCta] = useState(
+    initialIsNewGroup && me.id === String(data.createdByUserId),
+  );
+  useEffect(() => {
+    if (initialIsNewGroup) {
+      router.setParams({ new: undefined });
+    }
+  }, [initialIsNewGroup, router]);
 
   return (
     <ScrollView style={styles.container}>
@@ -57,6 +81,24 @@ function PromoterGroupScreenInner({ id }: { id: number }) {
           {data.name}
         </Text>
       </View>
+
+      {/* MUS-92: first-load Add members CTA, only for the creator and only
+          when the screen was landed on with `?new=1`. The action itself is
+          out of scope for this ticket — for now we surface a non-blocking
+          dismiss-only card so the user knows where to invite teammates
+          when that flow ships. Tapping the action navigates to a
+          placeholder route that will be wired up by the follow-up ticket
+          for the promoter-group add-members journey. */}
+      {showAddMembersCta && (
+        <AddMembersCta
+          onPress={() => {
+            setShowAddMembersCta(false);
+            // Promoter-group add-members has no existing host flow yet, so
+            // a routerless dismiss is the safest behaviour today.
+          }}
+          onDismiss={() => setShowAddMembersCta(false)}
+        />
+      )}
 
       <View style={styles.section}>
         <Text
@@ -118,6 +160,55 @@ function PromoterGroupScreenInner({ id }: { id: number }) {
         )}
       </View>
     </ScrollView>
+  );
+}
+
+/**
+ * MUS-92 first-load "Add members" CTA. Mirrors the band screen's component
+ * (intentionally duplicated rather than shared because the two screens'
+ * style systems and copy already diverge — see `memberDisplayName` and the
+ * different `styles` blocks). Visibility gating lives in the parent.
+ */
+function AddMembersCta({
+  onPress,
+  onDismiss,
+}: {
+  onPress: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <View style={styles.addMembersWrapper} testID="add-members-cta">
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel="Add members to your new promoter group"
+        testID="add-members-cta-action"
+        style={({ pressed }) => [
+          styles.addMembersBtn,
+          pressed && styles.addMembersBtnPressed,
+        ]}
+      >
+        <View style={styles.addMembersIcon}>
+          <Ionicons name="person-add" size={20} color="#fff" />
+        </View>
+        <View style={styles.addMembersText}>
+          <Text style={styles.addMembersTitle}>Add members</Text>
+          <Text style={styles.addMembersBlurb}>
+            Your group is set up. Invite the rest of the team.
+          </Text>
+        </View>
+      </Pressable>
+      <Pressable
+        onPress={onDismiss}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss add members"
+        testID="add-members-cta-dismiss"
+        style={styles.addMembersDismiss}
+        hitSlop={8}
+      >
+        <Ionicons name="close" size={20} color="#c8c8d0" />
+      </Pressable>
+    </View>
   );
 }
 
@@ -229,4 +320,42 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   notFoundText: { color: "#7a7a85", fontSize: 16 },
+  // MUS-92 — first-load Add members CTA. Same visual language as the band
+  // profile equivalent for cross-screen consistency.
+  addMembersWrapper: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: "#1a1a1f",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#6c63ff",
+    overflow: "hidden",
+  },
+  addMembersBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  addMembersBtnPressed: { opacity: 0.85 },
+  addMembersIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#6c63ff",
+  },
+  addMembersText: { flex: 1 },
+  addMembersTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  addMembersBlurb: { color: "#c8c8d0", fontSize: 12, marginTop: 2 },
+  addMembersDismiss: {
+    paddingHorizontal: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });

@@ -28,6 +28,15 @@ export const bands = pgTable('bands', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
   imageUrl: text('imageUrl'),
+  // MUS-92: identifies the user who created the band via the name-first
+  // create flow (or future create paths). Nullable so legacy / seed-inserted
+  // rows that pre-date this column don't need backfill, and `ON DELETE SET
+  // NULL` so deleting the user doesn't cascade-drop the band. The mobile
+  // band profile screen uses this to gate the "Add members" CTA — only the
+  // creator sees it.
+  created_by_user_id: integer('created_by_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
 });
 
 export const bandTracks = pgTable('band_tracks', {
@@ -71,6 +80,13 @@ export const userRoles = pgTable(
 export const promoterGroups = pgTable('promoter_groups', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
+  // MUS-92: identifies the user who created the promoter group via the
+  // name-first create flow. Nullable + `ON DELETE SET NULL` for the same
+  // reasons as `bands.created_by_user_id` — legacy seed rows have no creator
+  // and a user delete should not orphan the group.
+  created_by_user_id: integer('created_by_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
   created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -487,10 +503,29 @@ export const musicianProfiles = pgTable('musician_profiles', {
 
 export type MusicianProfile = typeof musicianProfiles.$inferSelect;
 
-export interface BandWithMembers extends Band {
+// Camel-case DTO shape returned by `bands.list` and `bands.listMine` (mobile)
+// and the `/api/bands` REST endpoint (web). Independent of the raw `Band` row
+// type so the snake_case `created_by_user_id` column doesn't leak to clients
+// — that column is intentionally NOT exposed on the list shapes (it's only
+// surfaced on `BandProfile`, where the mobile profile screen needs it for the
+// "Add members" CTA gate).
+export interface BandWithMembers {
+  id: number;
+  name: string;
+  imageUrl: string | null;
   members: Pick<User, 'id' | 'username' | 'firstName' | 'lastName'>[];
 }
 
-export interface BandProfile extends BandWithMembers {
+// `BandProfile` deliberately rewrites the `Band` shape in camelCase rather
+// than extending it: the DB columns are `snake_case` but the tRPC response
+// shape is `camelCase` (per the CLAUDE.md convention of explicit projections
+// with camelCase keys). MUS-92 added `created_by_user_id` → `createdByUserId`
+// here.
+export interface BandProfile {
+  id: number;
+  name: string;
+  imageUrl: string | null;
+  createdByUserId: number | null;
+  members: Pick<User, 'id' | 'username' | 'firstName' | 'lastName'>[];
   tracks: Pick<BandTrack, 'id' | 'title' | 'url' | 'position'>[];
 }

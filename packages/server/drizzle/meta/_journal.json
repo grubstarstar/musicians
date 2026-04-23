@@ -92,6 +92,13 @@
       "when": 1777150000000,
       "tag": "0012_promoter_group_join_request_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777200000000,
+      "tag": "0013_creator_user_id_on_bands_promoter_groups",
+      "breakpoints": true
     }
   ]
 }
