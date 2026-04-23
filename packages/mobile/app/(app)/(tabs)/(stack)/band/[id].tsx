@@ -81,7 +81,13 @@ function BandScreenInner({
           colors={["rgba(0,0,0,0)", `${background}80`, background]}
           style={styles.heroGradient}
         />
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          testID="band-profile-go-back"
+        >
           <Ionicons name="chevron-back" size={36} color="#fff" />
         </Pressable>
         <Text style={[styles.heroName, { color: textColor }]}>{data.name}</Text>

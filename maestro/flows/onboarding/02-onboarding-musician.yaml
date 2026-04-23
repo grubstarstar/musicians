@@ -264,12 +264,14 @@ appId: com.musicians.app
 # must NOT appear. We exercise this by navigating back to step-2 from the band
 # profile, selecting the solo-artist tile, and going through create-entity again.
 #
-# We are currently on the band profile after the band-mode sub-flow. Use OS back
-# to return to the create-entity form, then back again to reach step-2.
-# (router.replace was used for band profile, so the stack above step-2 is:
-#  step-2 → create-entity → band-profile. Two backs return to step-2.)
-- back
-- back
+# We are currently on the band profile after the band-mode sub-flow. Tap the
+# band-profile back button to return to step-2. The create-entity screen used
+# router.replace to navigate to the band profile, so the stack at this point
+# is just step-2 → band-profile (one back, not two). Maestro's bare `- back`
+# is unreliable on iOS (no hardware back), so we use the band-profile-go-back
+# testID added on the back chevron Pressable.
+- tapOn:
+    id: "band-profile-go-back"
 
 # Wait for step-2 to be visible again before tapping.
 - extendedWaitUntil:
