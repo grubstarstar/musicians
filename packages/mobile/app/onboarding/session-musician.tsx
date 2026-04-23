@@ -209,6 +209,7 @@ function SessionMusicianProfileForm({ mode, existing }: FormProps) {
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Go back"
+            testID="session-musician-go-back"
             style={styles.backBtn}
           >
             <Ionicons name="chevron-back" size={28} color="#fff" />

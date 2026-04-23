@@ -178,10 +178,11 @@ appId: com.musicians.app
 # Navigate back to step-2 via the session-musician screen's custom back button.
 # The onboarding Stack (_layout.tsx) sets gestureEnabled: false and
 # headerShown: false, so Maestro's bare `- back` (which targets the iOS swipe /
-# hardware back) has no target. The session-musician screen renders a custom
-# <Pressable accessibilityLabel="Go back"> inside its ScrollView — tap that.
+# hardware back) has no target. Tap the back button by testID — the
+# accessibilityLabel-only selector proved unreliable on small chevron
+# Pressables in a ScrollView.
 - tapOn:
-    label: "Go back"
+    id: "session-musician-go-back"
 
 # Assert we are back on step-2 with the session-musician tile still selected.
 - assertVisible:
