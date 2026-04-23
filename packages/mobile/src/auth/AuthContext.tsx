@@ -36,6 +36,22 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /**
+   * Re-fetches the current user from `/api/auth/me` and updates `user` in
+   * context. Call this after any server-side mutation that changes fields
+   * the auth gate cares about (currently `roles` — see (app)/_layout.tsx).
+   *
+   * Introduced for MUS-92: after `onboarding.setRole` succeeds, the in-memory
+   * `user.roles` is still stale `[]`, so the (app) layout guard would bounce
+   * the user back to the role-picker on the next navigation into the (app)
+   * group (e.g. the create-entity deep link). Calling `refreshUser()` before
+   * navigating out of the wizard syncs context with the server.
+   *
+   * No-op if there is no token (logged out / loading). Errors are swallowed
+   * — a transient `/me` failure shouldn't block UX; the auth gate will
+   * re-resolve on the next cold launch.
+   */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContextCtx = createContext<AuthContextValue | null>(null);
@@ -242,9 +258,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Re-fetch `/me` and replace the user in context. See the doc comment on
+  // `AuthContextValue.refreshUser` for the MUS-92 motivation. Reads `token`
+  // from state rather than capturing it in a closure-stale way — the callback
+  // is recomputed when `token` changes.
+  const refreshUser = useCallback(async () => {
+    if (!token) return;
+    const me = await fetchMe(API_URL, token);
+    if (!me) return;
+    setUser({ username: me.username, roles: me.roles });
+  }, [token]);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, token, login, register, logout }),
-    [status, user, token, login, register, logout],
+    () => ({ status, user, token, login, register, logout, refreshUser }),
+    [status, user, token, login, register, logout, refreshUser],
   );
 
   return (
