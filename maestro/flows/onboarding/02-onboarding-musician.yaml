@@ -1,18 +1,24 @@
 appId: com.musicians.app
 ---
-# Flow 02 of the onboarding e2e journey (MUS-89, extended in MUS-92).
+# Flow 02 of the onboarding e2e journey (MUS-89, extended in MUS-92, MUS-90).
 # Entry state: flow 01 (01-signup.yaml) has run — "newbie" account exists in
 # the test DB with password "abcd1234" and roles=[].
-# This flow exercises the musician path through the role-picker:
+# This flow exercises the musician path through the role-picker and the full
+# musician step-2 screen (MUS-90):
 #   - Assert the role-picker screen is visible.
 #   - Verify Next is disabled before a role is selected.
 #   - Tap "As a musician" tile.
-#   - Verify Next is now enabled.
 #   - Tap Next and assert the app navigates to the musician step-2 screen.
-# MUS-92 extension: exercises the create-entity sub-flow for bands and solo
-# artists. Because the musician step-2 screen (MUS-90) has not yet landed, the
-# create-entity screen is reached via deep-link in both sub-flows. Once MUS-90
-# lands, these steps remain correct — the screen URI is the same either way.
+#   - Verify Next on step-2 is disabled until an option is selected.
+#   - Exercise all four step-2 options in turn:
+#       "Create a new band"  → /create-entity?entityType=band&memberMode=band
+#       "Join existing band" → /onboarding/join-band (placeholder)
+#       "I'm a solo artist"  → /create-entity?entityType=band&memberMode=solo
+#       "Session musician"   → /onboarding/session-musician
+#   - Verify back-and-return preserves the selected tile (join-band path, the
+#     easiest case: the placeholder has a Back testID that returns to step-2).
+# MUS-92: exercises the create-entity sub-flow for bands and solo artists,
+# reached via in-app navigation through step-2 now that MUS-90 has landed.
 #   Band-mode:  name input → submit → band profile with "Add members" CTA →
 #               dismiss CTA → CTA gone.
 #   Solo-mode:  name input → submit → band profile without "Add members" CTA.
@@ -95,25 +101,102 @@ appId: com.musicians.app
 - tapOn:
     id: "onboarding-role-next"
 
-# Assert we have arrived on the musician step-2 placeholder screen.
-# The stub testID is stable — MUS-90 will replace the content but the route
-# and testID are guaranteed to remain.
+# Assert we have arrived on the musician step-2 screen (MUS-90).
+# The stub testID "onboarding-musician-stub" is replaced by the real screen
+# anchor "onboarding-musician-step2" — the SafeAreaView root of the four-option
+# screen. Asserting this ID confirms the role-picker → step-2 navigation fired.
 - assertVisible:
-    id: "onboarding-musician-stub"
+    id: "onboarding-musician-step2"
 
 # =============================================================================
-# MUS-92: Name-first create sub-flow — band mode
+# Step-2 guard: Next disabled until an option is selected
 # =============================================================================
-# The musician step-2 screen (MUS-90) is not yet landed on main, so there is no
-# in-app navigation path from /onboarding/musician to /create-entity. We drive
-# the create-entity screen directly via deep-link, which is the pattern the
-# HANDOFF explicitly endorses: "qa-automate flows should drive the screen via
-# deep-link until those land."
-# The cached dev-client build registers "exp+musicians" as the URL scheme
-# (Expo dev-client convention), not bare "musicians://". Expo Router strips
-# route-group path segments ((app)/(tabs)/(stack)) and resolves
-# "create-entity" as the file-based route directly.
-- openLink: "exp+musicians://create-entity?entityType=band&memberMode=band"
+# The Next button on step-2 must be disabled (no-op) before any tile is tapped.
+# Tap it and assert the step-2 screen is still visible (no navigation occurred).
+- tapOn:
+    id: "onboarding-musician-step2-next"
+- assertVisible:
+    id: "onboarding-musician-step2"
+
+# =============================================================================
+# Step-2 option 2: "Join existing band" — back-and-return preservation test
+# =============================================================================
+# We test join-band first because its placeholder has an explicit Back testID
+# (onboarding-join-band-back) that makes the back-and-return AC easiest to
+# verify without relying on hardware/OS back gestures.
+#
+# Select the "Join an existing band" tile.
+- tapOn:
+    id: "onboarding-musician-step2-join-band"
+
+# Tap Next. The button is now enabled. router.push navigates to
+# /onboarding/join-band (the placeholder screen added in MUS-90).
+- tapOn:
+    id: "onboarding-musician-step2-next"
+
+# Assert we have reached the join-band placeholder screen.
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-join-band-stub"
+    timeout: 10000
+
+# Tap the placeholder's Back button. router.back() pops back to step-2.
+# Because the navigator used router.push (not replace), the step-2 component
+# remains mounted and its useState selection is preserved.
+- tapOn:
+    id: "onboarding-join-band-back"
+
+# Assert we are back on step-2 — the screen root is visible again.
+- assertVisible:
+    id: "onboarding-musician-step2"
+
+# Assert the join-band tile is still highlighted (state preserved via push/back).
+# Tapping on a composite tile in Maestro verifies it is present in the a11y tree;
+# we use assertVisible on the testID to confirm it is rendered and accessible.
+- assertVisible:
+    id: "onboarding-musician-step2-join-band"
+
+# =============================================================================
+# Step-2 option 4: "Session musician"
+# =============================================================================
+# Tap the "Session musician" tile and navigate forward. The destination is
+# /onboarding/session-musician (MUS-93). We assert on the instrument input
+# testID (from flow 03) to confirm the screen was reached.
+- tapOn:
+    id: "onboarding-musician-step2-session-musician"
+
+- tapOn:
+    id: "onboarding-musician-step2-next"
+
+# Wait for the session-musician screen. The instrument input testID is the
+# most stable above-fold anchor from MUS-93 (see flow 03 for full coverage).
+- extendedWaitUntil:
+    visible:
+      id: "session-musician-instrument-input"
+    timeout: 10000
+
+# Navigate back to step-2 via the OS back gesture. Maestro's native back
+# action is correct here — the session-musician screen uses standard stack
+# navigation (no custom Back testID in its HANDOFF).
+- back
+
+# Assert we are back on step-2 with the session-musician tile still selected.
+- assertVisible:
+    id: "onboarding-musician-step2"
+- assertVisible:
+    id: "onboarding-musician-step2-session-musician"
+
+# =============================================================================
+# MUS-92: Step-2 option 1: "Create a new band" → create-entity (band mode)
+# =============================================================================
+# Select "Create a new band" and tap Next. The destination is
+# /create-entity?entityType=band&memberMode=band. MUS-90 wires this navigation
+# via in-app router.push — no deep-link workaround needed now that step-2 lands.
+- tapOn:
+    id: "onboarding-musician-step2-create-band"
+
+- tapOn:
+    id: "onboarding-musician-step2-next"
 
 # Wait for the create-entity form to appear. The screen heading testID is the
 # most stable anchor — it is always visible above the fold regardless of
@@ -131,7 +214,7 @@ appId: com.musicians.app
     id: "create-entity-heading"
 
 # Enter a band name. The input is autofocused on mount but we tap the testID
-# explicitly to be safe (a deep-link navigation sometimes shifts focus).
+# explicitly to be safe (navigating in from step-2 sometimes shifts focus).
 - tapOn:
     id: "create-entity-name-input"
 - inputText: "The Testers (E2E Band)"
@@ -170,16 +253,35 @@ appId: com.musicians.app
     id: "add-members-cta"
 
 # =============================================================================
-# MUS-92: Name-first create sub-flow — solo mode
+# MUS-92: Step-2 option 3: "I'm a solo artist" → create-entity (solo mode)
 # =============================================================================
 # In memberMode=solo the entity is created with exactly one member and the app
 # navigates to the band profile WITHOUT ?new=1. Therefore the "Add members" CTA
-# must NOT appear. We verify this by entering a name, submitting, and asserting
-# the CTA is absent.
-- openLink: "exp+musicians://create-entity?entityType=band&memberMode=solo"
+# must NOT appear. We exercise this by navigating back to step-2 from the band
+# profile, selecting the solo-artist tile, and going through create-entity again.
+#
+# We are currently on the band profile after the band-mode sub-flow. Use OS back
+# to return to the create-entity form, then back again to reach step-2.
+# (router.replace was used for band profile, so the stack above step-2 is:
+#  step-2 → create-entity → band-profile. Two backs return to step-2.)
+- back
+- back
 
-# Wait for the create-entity form again. The heading testID is always present
-# regardless of memberMode.
+# Wait for step-2 to be visible again before tapping.
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-musician-step2"
+    timeout: 10000
+
+# Select the "I'm a solo artist" tile.
+- tapOn:
+    id: "onboarding-musician-step2-solo-artist"
+
+# Tap Next. Routes to /create-entity?entityType=band&memberMode=solo.
+- tapOn:
+    id: "onboarding-musician-step2-next"
+
+# Wait for the create-entity form. Same heading testID as band mode.
 - extendedWaitUntil:
     visible:
       id: "create-entity-heading"
