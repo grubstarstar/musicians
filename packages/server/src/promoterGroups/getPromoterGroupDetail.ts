@@ -44,6 +44,9 @@ export async function getPromoterGroupDetail(
     .select({
       id: promoterGroups.id,
       name: promoterGroups.name,
+      // MUS-92: surface the creator so the mobile profile can gate the
+      // "Add members" CTA to the creator only.
+      createdByUserId: promoterGroups.created_by_user_id,
     })
     .from(promoterGroups)
     .innerJoin(

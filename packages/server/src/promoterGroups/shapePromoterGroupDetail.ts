@@ -16,6 +16,10 @@
 export interface PromoterGroupBaseRow {
   id: number;
   name: string;
+  // MUS-92: surfaced from `promoter_groups.created_by_user_id`. Nullable
+  // because rows seeded before the column existed never had a creator
+  // recorded.
+  createdByUserId: number | null;
 }
 
 export interface VenueRow {
@@ -34,6 +38,8 @@ export interface MemberRow {
 export interface PromoterGroupDetail {
   id: number;
   name: string;
+  // MUS-92: forwarded from the base row; `null` for legacy rows.
+  createdByUserId: number | null;
   venues: VenueRow[];
   members: MemberRow[];
 }
@@ -46,6 +52,7 @@ export function shapePromoterGroupDetail(
   return {
     id: group.id,
     name: group.name,
+    createdByUserId: group.createdByUserId,
     venues: venueRows.map((v) => ({ id: v.id, name: v.name, address: v.address })),
     members: memberRows.map((m) => ({
       userId: m.userId,

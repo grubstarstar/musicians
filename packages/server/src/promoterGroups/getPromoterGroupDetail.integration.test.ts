@@ -100,6 +100,11 @@ describe.skipIf(skip)('promoterGroups.get (integration)', () => {
     expect(detail).toEqual({
       id: groupId,
       name: 'Test Promotions',
+      // MUS-92: this fixture inserts the promoter group via raw `db.insert`
+      // without setting `created_by_user_id`, so the column defaults to
+      // null. The dedicated `createPromoterGroupWithCreator` path (covered
+      // by the create-flow integration tests) populates it.
+      createdByUserId: null,
       venues: [{ id: venueId, name: 'Test Hall', address: '1 Test Lane' }],
       members: [
         {

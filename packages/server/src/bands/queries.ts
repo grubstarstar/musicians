@@ -1,10 +1,21 @@
 import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db.js';
+import type { CreateEntityResult } from '../onboarding/createEntityResult.js';
 import { bandMembers, bandTracks, bands, users } from '../schema.js';
 import type { BandProfile, BandWithMembers } from '../schema.js';
 
 export async function listBands(): Promise<BandWithMembers[]> {
-  const allBands = await db.select().from(bands).orderBy(asc(bands.name));
+  // Explicit projection — see `BandWithMembers` for why `created_by_user_id`
+  // is intentionally omitted from the list response (it's a profile-screen
+  // concern, not a discovery-list concern).
+  const allBands = await db
+    .select({
+      id: bands.id,
+      name: bands.name,
+      imageUrl: bands.imageUrl,
+    })
+    .from(bands)
+    .orderBy(asc(bands.name));
 
   const allMembers = await db
     .select({
@@ -81,8 +92,50 @@ export async function listMyBands(userId: number): Promise<BandWithMembers[]> {
   }));
 }
 
+/**
+ * Creates a band with the caller as the first (and, in `solo` mode, only)
+ * member. Used by the MUS-92 name-first create flow from the onboarding
+ * wizard. The band row records `created_by_user_id` so the profile screen
+ * can gate the "Add members" CTA to the creator only.
+ *
+ * Wrapped in a transaction so a partial failure (band inserted but
+ * `band_members` row missing) cannot land — the caller would otherwise see
+ * a band they can't view (membership-gated reads).
+ */
+export async function createBandWithCreator(
+  input: { name: string },
+  creatorUserId: number,
+): Promise<CreateEntityResult> {
+  return db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(bands)
+      .values({ name: input.name, created_by_user_id: creatorUserId })
+      .returning({ id: bands.id });
+    await tx.insert(bandMembers).values({
+      band_id: inserted.id,
+      user_id: creatorUserId,
+    });
+    // memberMode is supplied by the procedure so this helper stays pure
+    // about the entity shape; the caller decides band vs solo. We return it
+    // here only so the procedure result contains everything the mobile
+    // post-create router needs in one round trip.
+    return { id: inserted.id, memberMode: 'band' };
+  });
+}
+
 export async function getBandProfile(id: number): Promise<BandProfile | null> {
-  const [band] = await db.select().from(bands).where(eq(bands.id, id));
+  // Explicit projection (per the CLAUDE.md tRPC convention): the snake_case
+  // `created_by_user_id` column maps to camelCase `createdByUserId` on the
+  // returned shape so mobile sees a stable client-friendly DTO.
+  const [band] = await db
+    .select({
+      id: bands.id,
+      name: bands.name,
+      imageUrl: bands.imageUrl,
+      createdByUserId: bands.created_by_user_id,
+    })
+    .from(bands)
+    .where(eq(bands.id, id));
   if (!band) return null;
 
   const members = await db
