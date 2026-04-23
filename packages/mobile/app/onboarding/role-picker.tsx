@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../../src/auth/AuthContext";
 import { trpc } from "../../src/trpc";
 
 // MUS-89: first step of the onboarding wizard. The user picks one of the
@@ -40,12 +41,20 @@ const ROLE_OPTIONS: RoleOption[] = [
 
 export default function RolePickerScreen() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [selected, setSelected] = useState<OnboardingRole | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const setRole = useMutation(
     trpc.onboarding.setRole.mutationOptions({
-      onSuccess: (_data, variables) => {
+      onSuccess: async (_data, variables) => {
+        // MUS-92: sync AuthContext with the server's now-populated `roles`
+        // before navigating. Otherwise any subsequent navigation into the
+        // (app) group (e.g. the create-entity deep link from the musician
+        // step-2 placeholder) sees stale `user.roles = []` and the layout
+        // guard at (app)/_layout.tsx bounces the user straight back here.
+        // Awaited so the navigation below sees the fresh state.
+        await refreshUser();
         // Route to the matching step-2 screen. `replace` so "back" doesn't
         // land on the picker after the role is already recorded — the wizard
         // advances; if the user needs to change their mind, the add-role
