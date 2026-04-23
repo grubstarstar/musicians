@@ -200,12 +200,13 @@ appId: com.musicians.app
     id: "settings-screen"
 
 # With both musician and promoter roles now held, the Add-role row is disabled
-# (computeAddableRoles returns []). The row's help text flips to the
-# "no addable roles left" copy. Tapping the disabled Pressable is a no-op, so
-# we verify the disabled state via the help-text copy rather than attempting
-# to navigate into the picker. Seeing this copy proves the AuthContext was
-# updated synchronously via setRoles(...) in the mutation's onSuccess — the
-# addable-roles computation now sees both roles without a page reload.
+# (computeAddableRoles returns []). Assert the enabled=false state directly —
+# the subtitle Text node is collapsed into the Pressable's composite
+# accessibility node on iOS so a text assertion won't resolve, but the
+# disabled state is surfaced on the row's own node via accessibilityState.
+# Seeing enabled=false proves the AuthContext was synchronously updated via
+# setRoles(...) in the mutation's onSuccess — the addable-roles computation
+# now sees both roles without a page reload.
 - assertVisible:
     id: "settings-add-role"
-- assertVisible: "You've already added every available role."
+    enabled: false
