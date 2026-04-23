@@ -109,10 +109,11 @@ appId: com.musicians.app
 # the create-entity screen directly via deep-link, which is the pattern the
 # HANDOFF explicitly endorses: "qa-automate flows should drive the screen via
 # deep-link until those land."
-# The Expo app is registered under the slug "musicians", so the scheme is
-# musicians://. Expo Router strips route-group path segments ((app)/(tabs)/(stack))
-# and resolves "create-entity" as the file-based route directly.
-- openLink: "musicians://create-entity?entityType=band&memberMode=band"
+# The cached dev-client build registers "exp+musicians" as the URL scheme
+# (Expo dev-client convention), not bare "musicians://". Expo Router strips
+# route-group path segments ((app)/(tabs)/(stack)) and resolves
+# "create-entity" as the file-based route directly.
+- openLink: "exp+musicians://create-entity?entityType=band&memberMode=band"
 
 # Wait for the create-entity form to appear. The screen heading testID is the
 # most stable anchor — it is always visible above the fold regardless of
@@ -179,7 +180,7 @@ appId: com.musicians.app
 # navigates to the band profile WITHOUT ?new=1. Therefore the "Add members" CTA
 # must NOT appear. We verify this by entering a name, submitting, and asserting
 # the CTA is absent.
-- openLink: "musicians://create-entity?entityType=band&memberMode=solo"
+- openLink: "exp+musicians://create-entity?entityType=band&memberMode=solo"
 
 # Wait for the create-entity form again. The heading testID is always present
 # regardless of memberMode.
