@@ -7,11 +7,18 @@ appId: com.musicians.app
 #   always start the journey from the login screen.
 # - Sign in as gigtar.
 # - Post a `Musician for a band` request: instrument = Bass Guitar (via
-#   the InstrumentAutocomplete component introduced in MUS-68), band = The Testers.
+#   the modal-based InstrumentAutocomplete introduced in MUS-68), band = The Testers.
 #
 # MUS-68 replaced the free-text instrument TextInput with an autocomplete
 # that debounces 200ms and requires selecting a suggestion row to commit an
 # instrumentId. Typing alone no longer enables the submit button.
+#
+# A second MUS-68 fix-up replaced the inline suggestion dropdown with a
+# full-screen modal after the dropdown was pushed below the iOS keyboard
+# inside the parent ScrollView. The modal owns its own viewport and is
+# not affected by keyboard avoidance. The old "instrument-autocomplete-suggestions"
+# testID no longer exists — interaction now goes:
+#   tap outer Pressable → modal opens → type in modal search input → tap row.
 - runFlow: ../../helpers/reset.yaml
 # The app is pre-launched by scripts/e2e-sim-setup.sh, which seeds the
 # dev-launcher defaults so it auto-connects to Metro. Maestro's own XCTest
@@ -48,42 +55,44 @@ appId: com.musicians.app
 # Tracked separately as an a11y follow-up.
 - assertVisible: "Post request"
 
-# --- Fill the instrument field via the InstrumentAutocomplete (MUS-68) ---
-# The TextInput now has testID "post-request-instrument". Tap it to focus,
-# then type a query. The autocomplete debounces 200ms before querying the
-# server, so we wait for the suggestion list to become visible before tapping.
-# Using testID here because the placeholder text ("e.g. Bass") is not
-# exposed in the iOS a11y tree — visible text is preferred but unavailable.
+# --- Fill the instrument field via the modal-based InstrumentAutocomplete (MUS-68) ---
+# The instrument field is now a Pressable (not a TextInput). Tapping it
+# opens a full-screen slide-in modal with its own search TextInput.
+# Using testID for the outer Pressable because the field's placeholder text
+# is not reliably exposed in the iOS a11y tree — visible text is preferred
+# but unavailable here.
 - tapOn:
     id: "post-request-instrument"
-- inputText: "Bass Guitar"
-# Wait for the autocomplete debounce (200ms) to fire and the suggestions
-# dropdown to render. `extendedWaitUntil` polls for visibility rather than
-# sleeping a fixed clock duration — more robust across slow CI sims.
-# Timeout raised to 4000ms (MUS-68 fix-up): 1000ms was too tight on cold
-# simulator runs (200ms debounce + tRPC roundtrip + React render).
+# Wait for the modal's search TextInput to become visible. The modal
+# animates in (~50ms on device), so we poll with extendedWaitUntil rather
+# than assuming instant appearance. 3000ms is generous for a slide-in animation.
 - extendedWaitUntil:
     visible:
-      id: "instrument-autocomplete-suggestions"
+      id: "instrument-picker-search"
+    timeout: 3000
+# Tap the search input to ensure focus before typing. The modal auto-focuses
+# it on open, but an explicit tap guards against the animation not having
+# fully settled.
+- tapOn:
+    id: "instrument-picker-search"
+- inputText: "Bass Guitar"
+# Wait for the "Bass Guitar" row to appear in the FlatList.
+# The search is debounced 200ms and backed by a tRPC roundtrip + React render,
+# so allow 4000ms for cold-simulator runs (200ms debounce + network + render).
+# extendedWaitUntil on visible text is sufficient here — the row renders the
+# canonical instrument name and is unique on this screen.
+- extendedWaitUntil:
+    visible: "Bass Guitar"
     timeout: 4000
-
-# The suggestion dropdown is now visible. Tap the "Bass Guitar" row by
-# visible text to commit the instrumentId.
-# We tap by visible text — the suggestion row renders the canonical
-# instrument name and is the only "Bass Guitar" text on screen at this
-# moment. Never tap by testID "instrument-autocomplete-option-<id>" since
-# the numeric id suffix is not stable across seed runs.
+# Tap the row by visible text to commit the selection.
+# The modal auto-closes after a row tap and the outer Pressable now shows
+# the selected instrument name. Never use testID "instrument-picker-option-<id>"
+# — the numeric id suffix is not stable across seed runs.
 - tapOn: "Bass Guitar"
 
-# After tapping a suggestion the dropdown hides and the input displays the
-# canonical name. Assert the name is visible to confirm the selection
-# committed and the dropdown dismissed.
+# After the modal closes the outer Pressable field displays the chosen name.
+# Assert it is visible on the Post Request form to confirm selection committed.
 - assertVisible: "Bass Guitar"
-
-# Dismiss the keyboard by tapping the non-interactive section heading.
-# `hideKeyboard` is unreliable on React Native inputs — this is Maestro's
-# own recommended workaround.
-- tapOn: "INSTRUMENT"
 
 # Submit. The button sits below the fold on this form. `scrollUntilVisible`
 # starts its swipe gesture near the bottom of the screen where the tab bar
