@@ -432,9 +432,14 @@ describe.skipIf(skip)('requests promoter_group_join router (integration)', () =>
       const alice = callerFor(aliceId);
 
       // Post a `band-for-musician` request — a different kind.
+      const [drums] = await db
+        .select({ id: schema.instruments.id })
+        .from(schema.instruments)
+        .where(eq(schema.instruments.name, 'Drums'))
+        .limit(1);
       const otherReq = await bob.requests.create({
         kind: 'band-for-musician',
-        instrument: 'Drums',
+        instrumentId: drums.id,
       });
 
       await expect(
