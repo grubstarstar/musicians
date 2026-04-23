@@ -1,0 +1,106 @@
+appId: com.musicians.app
+---
+# Flow 02 of the promoter-home e2e journey (MUS-100).
+# Entry state: assumes the seedE2E fixture from flow 01 is still warm (promoter1,
+#   "Test Promotions", "Test Hall"). This flow resets the DB itself so it can
+#   also run standalone.
+# This flow exercises the promoter-group detail screen:
+#   - Reset the test DB to ensure the promoter-home slice is present.
+#   - Log in as promoter1 and switch to Promoter context (same opening steps as flow 01).
+#   - Tap the "Test Promotions" group row on PromoterHome to navigate to the detail screen.
+#   - Assert the group title, venues section header, the "Test Hall" venue, the members
+#     section header, and the "promoter1" member display name are all visible.
+#   - Back-navigate and assert PromoterHome is visible again via promoter-groups-section-header.
+
+# Reset the test DB to the seedE2E fixture before any UI interaction. This seeds
+# promoter1, "Test Promotions", and "Test Hall" (1 Test Lane, Testville VIC 3000).
+- runFlow: ../../helpers/reset.yaml
+
+# Bring the app to the foreground in a known state. No clearState — that wipes
+# the dev-client's saved server URL and drops us at the dev launcher screen.
+- launchApp
+
+# Cold bundle fetch can take 20-40s on a sandboxed simulator. Wait explicitly
+# before interacting with the login screen.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# If a previous run left someone signed in, log them out so we start clean.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# Log in as the seeded promoter user (promoter1, password123).
+# firstName is null so UserContext falls back to username in the greeting.
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "promoter1"
+- tapOn:
+    id: "login-password"
+- inputText: "password123"
+- tapOn:
+    id: "login-submit"
+
+# After login, the home screen renders the welcome heading.
+- assertVisible: "Hello promoter1"
+
+# Switch to "Promoter" context via the app drawer.
+- tapOn:
+    text: "Open profile menu"
+- tapOn: "Promoter"
+
+# Dismiss the drawer by tapping the Home tab label.
+- tapOn: "Home, tab.*"
+
+# Verify PromoterHome is showing the seeded group before tapping into it.
+- assertVisible:
+    id: "promoter-groups-section-header"
+- assertVisible: "Test Promotions"
+
+# Tap the "Test Promotions" row to navigate to the detail screen. The row is
+# a Pressable wrapping the group name text — tapping the visible text activates
+# it. Visible-text selector is preferred over testID (which embeds a numeric DB
+# id unknowable at flow-write time). There is exactly one group in the seedE2E
+# fixture so the match is unambiguous.
+- tapOn: "Test Promotions"
+
+# Assert the detail screen header shows the group name. Uses testID because the
+# same text "Test Promotions" may still be visible in a cached list behind the
+# screen transition — the testID anchors the assertion to the detail header
+# specifically.
+- assertVisible:
+    id: "promoter-group-title"
+
+# Assert the venues section header is visible.
+- assertVisible:
+    id: "promoter-group-venues-section-header"
+
+# Assert the venue name is visible. Visible-text selector preferred — "Test Hall"
+# is a stable known-good string from seedE2E.
+- assertVisible: "Test Hall"
+
+# Assert the venue address is also visible (name stacked above address layout).
+- assertVisible: "1 Test Lane, Testville VIC 3000"
+
+# Assert the members section header is visible.
+- assertVisible:
+    id: "promoter-group-members-section-header"
+
+# Assert the single seeded member is shown by display name. With seedE2E as
+# shipped, promoter1's firstName is null so UserContext falls back to username,
+# rendering the visible text "promoter1". Visible-text selector is used because
+# the exact userId is unknown at flow-write time; the text is unique on this screen.
+- assertVisible: "promoter1"
+
+# Back-navigate to PromoterHome via the native iOS back gesture. The detail screen
+# lives inside the home-tab stack so the native back action works.
+- back
+
+# Assert PromoterHome is visible again. TanStack Query keeps the listMine result
+# warm from cache so there should be no loading flash — the assertion fires
+# immediately without an extended wait.
+- assertVisible:
+    id: "promoter-groups-section-header"
