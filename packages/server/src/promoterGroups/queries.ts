@@ -33,6 +33,33 @@ import {
  * inner join short-circuits and we never issue the second query. This
  * matches the ticket's AC: no promoter role → empty array, not an error.
  */
+/**
+ * Checks whether a user is a member of a specific promoter group. Membership
+ * is resolved through the same path as `listMyPromoterGroups`:
+ *   user_roles (role='promoter') → promoters_promoter_groups
+ * Returns false when either link is absent. Used by `requests.create` to
+ * reject `promoter_group_join` requests from users who are already members
+ * (MUS-88), and by `respondToPromoterGroupJoin` to gate who can decide.
+ */
+export async function isMemberOfPromoterGroup(
+  userId: number,
+  promoterGroupId: number,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: promotersPromoterGroups.id })
+    .from(promotersPromoterGroups)
+    .innerJoin(userRoles, eq(userRoles.id, promotersPromoterGroups.user_role_id))
+    .where(
+      and(
+        eq(promotersPromoterGroups.promoter_group_id, promoterGroupId),
+        eq(userRoles.user_id, userId),
+        eq(userRoles.role, 'promoter'),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
 export async function listMyPromoterGroups(
   userId: number,
 ): Promise<ShapedPromoterGroup[]> {

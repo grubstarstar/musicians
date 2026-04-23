@@ -184,7 +184,8 @@ type RowDetails =
   | { kind: "night-at-venue"; concept: string; possibleDates: string[] }
   | { kind: "promoter-for-venue-night"; venueId: number; proposedDate: string; concept?: string }
   | { kind: "band-for-musician"; instrument: string; availability?: string; demosUrl?: string }
-  | { kind: "band_join"; bandId: number };
+  | { kind: "band_join"; bandId: number }
+  | { kind: "promoter_group_join"; promoterGroupId: number };
 
 interface RequestRowProps {
   id: number;
@@ -325,6 +326,20 @@ function rowContentFor(
         subtitle: null,
         avatarUrl: band?.imageUrl ?? null,
         accessibilityLabel: `Open request to join ${title}`,
+      };
+    }
+    case "promoter_group_join": {
+      // MUS-88: a user asking to join a specific promoter group. No anchor
+      // column for promoter groups on `requests`, so we can't embed the
+      // group name without a second lookup — renders a generic title for
+      // this slice (the list surface is backend-only per AC; onboarding UI
+      // that posts these requests lives in sibling tickets under MUS-84).
+      return {
+        title: "Promoter group",
+        pill: "Join request",
+        subtitle: null,
+        avatarUrl: null,
+        accessibilityLabel: "Open request to join a promoter group",
       };
     }
   }

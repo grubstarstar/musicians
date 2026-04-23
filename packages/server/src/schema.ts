@@ -285,6 +285,14 @@ export const requestKindEnum = pgEnum('request_kind', [
   // Accept is authorised for any existing member of that band and inserts a
   // `band_members` row for the requester.
   'band_join',
+  // `promoter_group_join` (MUS-88): mirror of `band_join` for promoter groups.
+  // Used by the onboarding "Join existing promoter group" branch. No anchor
+  // column on `requests` for promoter groups, so the target group id is
+  // carried in `details.promoterGroupId`. Accept is authorised for any
+  // existing member of the group and inserts a `promoters_promoter_groups`
+  // row for the requester (creating a `user_roles` row with role='promoter'
+  // first if they don't already have one).
+  'promoter_group_join',
 ]);
 
 export const requestStatusEnum = pgEnum('request_status', ['open', 'closed', 'cancelled']);
@@ -359,6 +367,15 @@ export type RequestDetails =
   | {
       kind: 'band_join';
       bandId: number;
+    }
+  // `promoter_group_join` (MUS-88): a user asks to join a specific promoter
+  // group. Unlike `band_join` there is no anchor column for promoter groups
+  // on the `requests` table, so `promoterGroupId` is only carried in details.
+  // Accept/reject goes through dedicated `requests.respondToPromoterGroupJoin`
+  // — any existing member of the target group can decide.
+  | {
+      kind: 'promoter_group_join';
+      promoterGroupId: number;
     };
 
 export type EoiDetails =

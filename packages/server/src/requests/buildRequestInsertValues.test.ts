@@ -311,4 +311,37 @@ describe('buildRequestInsertValues', () => {
       expect(JSON.stringify(result)).not.toContain('sneaky');
     });
   });
+
+  describe('promoter_group_join', () => {
+    it('maps a promoter_group_join input with promoterGroupId, leaves both anchor columns null, slot_count 1', () => {
+      const input: RequestCreateInput = {
+        kind: 'promoter_group_join',
+        promoterGroupId: 24,
+      };
+
+      expect(buildRequestInsertValues(input, 77)).toEqual({
+        kind: 'promoter_group_join',
+        source_user_id: 77,
+        anchor_band_id: null,
+        anchor_gig_id: null,
+        details: { kind: 'promoter_group_join', promoterGroupId: 24 },
+        slot_count: 1,
+        slots_filled: 0,
+        status: 'open',
+      });
+    });
+
+    it('does not leak unknown input fields into details', () => {
+      const hostile = {
+        kind: 'promoter_group_join',
+        promoterGroupId: 3,
+        sneaky: 'should-not-leak',
+      } as unknown as RequestCreateInput;
+
+      const result = buildRequestInsertValues(hostile, 1);
+
+      expect(Object.keys(result.details).sort()).toEqual(['kind', 'promoterGroupId']);
+      expect(JSON.stringify(result)).not.toContain('sneaky');
+    });
+  });
 });
