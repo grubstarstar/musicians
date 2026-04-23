@@ -1,0 +1,173 @@
+appId: com.musicians.app
+---
+# Flow 05 of the onboarding e2e journey (MUS-94).
+# Entry state: seedE2E fixture re-seeded at the start (reset.yaml).
+# Depends on: none — safe to run in isolation.
+#
+# What this flow exercises:
+#   The onboarding gate (MUS-94) redirects users to the correct wizard step
+#   on launch, based on server-side evidence — not a client-only flag.
+#
+#   Four MUS-94 fixture users are verified in turn, each via a full
+#   login / assert-landing-screen / logout cycle:
+#
+#   1. newbie       — no roles at all         → role-picker screen
+#   2. onboardmus   — musician, no step-2     → musician step-2 screen
+#   3. onboardprom  — promoter, no step-2     → promoter step-2 screen
+#   4. onboarddone  — musician + band member  → home screen
+#
+#   After the four-user sweep, onboarddone logs in again from a fresh
+#   launchApp to verify the gate does NOT re-show the wizard after
+#   onboarding is complete (cross-session persistence AC).
+#
+# All fixture passwords are "abcd1234".
+
+# Reset the test DB so the MUS-94 fixture users exist and their onboarding
+# evidence is in the canonical state (newbie=no roles, onboardmus=musician
+# only, onboardprom=promoter only, onboarddone=musician+band).
+- runFlow: ../../helpers/reset.yaml
+
+- launchApp
+
+# Wait for the cold-start bundle. The sim has already launched the app; a
+# fresh JS bundle fetch can take 20-40s before the login screen appears.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# Defensive logout: a previous run may have left a session open.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cycle 1: newbie — no roles → should be redirected to role-picker
+# ─────────────────────────────────────────────────────────────────────────────
+
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "newbie"
+- tapOn:
+    id: "login-password"
+- inputText: "abcd1234"
+- tapOn:
+    id: "login-submit"
+
+# The onboarding gate resolves before the home screen mounts. newbie has no
+# roles, so the gate redirects to the role-picker. The role-picker heading is
+# the most specific stable text on that screen.
+- assertVisible: "What is your role?"
+
+# Log out via the back-route: role-picker is inside the onboarding group, not
+# the (app) drawer group, so "Open profile menu" is not available. Navigate to
+# the login screen by relaunching (stopApp is the default, so this stops and
+# restarts the app, clearing the in-memory navigation state while preserving
+# the server URL in AsyncStorage).
+- launchApp
+
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cycle 2: onboardmus — musician, no step-2 → musician step-2 screen
+# ─────────────────────────────────────────────────────────────────────────────
+
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "onboardmus"
+- tapOn:
+    id: "login-password"
+- inputText: "abcd1234"
+- tapOn:
+    id: "login-submit"
+
+# The gate sees: role=musician, no band_members row, no session-musician
+# profile, no pending band_join request → redirects to musician step-2.
+# Assert the step-2 heading for a musician.
+- assertVisible: "You're a musician"
+
+- launchApp
+
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cycle 3: onboardprom — promoter, no step-2 → promoter step-2 screen
+# ─────────────────────────────────────────────────────────────────────────────
+
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "onboardprom"
+- tapOn:
+    id: "login-password"
+- inputText: "abcd1234"
+- tapOn:
+    id: "login-submit"
+
+# The gate sees: role=promoter, no promoter_group_members row, no pending
+# promoter_group_join request → redirects to promoter step-2.
+- assertVisible: "You're a promoter"
+
+- launchApp
+
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cycle 4: onboarddone — musician + band member → home (wizard not shown)
+# ─────────────────────────────────────────────────────────────────────────────
+
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "onboarddone"
+- tapOn:
+    id: "login-password"
+- inputText: "abcd1234"
+- tapOn:
+    id: "login-submit"
+
+# The gate sees: role=musician, has a band_members row → step complete.
+# The app mounts the normal home screen and shows the welcome heading.
+- assertVisible: "Hello onboarddone"
+
+# Log out via the profile drawer (only available on the home screen).
+- tapOn: "Open profile menu"
+- tapOn: "Log out"
+- assertVisible: "Sign in to continue"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cross-session persistence check: relaunch while onboarddone's token is gone
+# (just logged out), log in again, and confirm home is shown — not the wizard.
+# This exercises AC: "Logging out and back in on the same device preserves the
+# resume point" + "A user who has completed onboarding is not shown the wizard
+# again on any device."
+# ─────────────────────────────────────────────────────────────────────────────
+
+- launchApp
+
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "onboarddone"
+- tapOn:
+    id: "login-password"
+- inputText: "abcd1234"
+- tapOn:
+    id: "login-submit"
+
+# If the gate incorrectly re-runs onboarding, it would show "What is your
+# role?" or "You're a musician". A clean "Hello onboarddone" proves the wizard
+# is permanently bypassed once onboarding evidence is satisfied.
+- assertVisible: "Hello onboarddone"
