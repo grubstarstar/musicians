@@ -51,23 +51,26 @@ appId: com.musicians.app
 # --- Fill the instrument field via the InstrumentAutocomplete (MUS-68) ---
 # The TextInput now has testID "post-request-instrument". Tap it to focus,
 # then type a query. The autocomplete debounces 200ms before querying the
-# server, so we sleep 250ms after typing to let the suggestion list render.
+# server, so we wait for the suggestion list to become visible before tapping.
 # Using testID here because the placeholder text ("e.g. Bass") is not
 # exposed in the iOS a11y tree — visible text is preferred but unavailable.
 - tapOn:
     id: "post-request-instrument"
 - inputText: "Bass Guitar"
-- sleep: 250
+# Wait for the autocomplete debounce (200ms) to fire and the suggestions
+# dropdown to render. `extendedWaitUntil` polls for visibility rather than
+# sleeping a fixed clock duration — more robust across slow CI sims.
+- extendedWaitUntil:
+    visible:
+      id: "instrument-autocomplete-suggestions"
+    timeout: 1000
 
-# The suggestion dropdown (testID: instrument-autocomplete-suggestions)
-# should now be visible. Assert its presence, then tap the "Bass Guitar"
-# row by visible text to commit the instrumentId.
+# The suggestion dropdown is now visible. Tap the "Bass Guitar" row by
+# visible text to commit the instrumentId.
 # We tap by visible text — the suggestion row renders the canonical
 # instrument name and is the only "Bass Guitar" text on screen at this
 # moment. Never tap by testID "instrument-autocomplete-option-<id>" since
 # the numeric id suffix is not stable across seed runs.
-- assertVisible:
-    id: "instrument-autocomplete-suggestions"
 - tapOn: "Bass Guitar"
 
 # After tapping a suggestion the dropdown hides and the input displays the
