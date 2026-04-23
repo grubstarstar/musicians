@@ -10,6 +10,10 @@ import {
   hasPromoterRole,
   listGigsByOrganiser,
 } from '../gigs/queries.js';
+import {
+  getMusicianProfile,
+  upsertMusicianProfile,
+} from '../musicianProfiles/queries.js';
 import { listMyPromoterGroups } from '../promoterGroups/queries.js';
 import { getUpcomingRehearsalsForBand } from '../rehearsals/queries.js';
 import {
@@ -79,6 +83,31 @@ export const appRouter = router({
       const userId = Number(ctx.user.id);
       return listMyPromoterGroups(userId);
     }),
+  }),
+  // Musician profiles (MUS-85). Per-user musician data kept in `musician_profiles`
+  // as a 1:1 companion to `users`. `get` is public so future discovery UIs can
+  // look up anyone's profile by id; `upsertMine` is strictly caller-keyed —
+  // there is no `userId` on the input so one user cannot overwrite another's
+  // row (see CLAUDE.md tRPC conventions: always coerce `ctx.user.id` once at
+  // the procedure boundary).
+  musicianProfiles: router({
+    get: publicProcedure
+      .input(z.object({ userId: z.number().int().positive() }))
+      .query(({ input }) => getMusicianProfile(input.userId)),
+    upsertMine: protectedProcedure
+      .input(
+        z.object({
+          instruments: z.array(z.string().min(1)),
+          experienceYears: z.number().int().nonnegative().nullable(),
+          location: z.string().min(1).nullable(),
+          bio: z.string().min(1).nullable(),
+          availableForSessionWork: z.boolean(),
+        }),
+      )
+      .mutation(({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        return upsertMusicianProfile(userId, input);
+      }),
   }),
   // Venues (MUS-58). Minimal list endpoint so the mobile
   // `promoter-for-venue-night` form can let the caller pick a venue. No
