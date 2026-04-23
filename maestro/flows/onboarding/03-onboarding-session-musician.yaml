@@ -32,19 +32,22 @@ appId: com.musicians.app
 # profile rows from a previous run and reseeds gigtar, sesh, promoter1, etc.
 - runFlow: ../../helpers/reset.yaml
 
-# Bring the app to the foreground. No clearState — that wipes the dev-client's
-# saved server URL and drops us at the dev launcher screen instead of the app.
-- launchApp
+# Bring the app to the foreground. clearKeychain: true wipes any stale iOS
+# Keychain entries (SecureStore-backed auth token from a previous flow) before
+# /api/auth/me fires. This ensures the app's AuthContext sees a 401 and marks
+# the user as unauthenticated, landing on the login screen. The dev-launcher's
+# saved server URL lives in NSUserDefaults (not keychain), so it survives this
+# flag — unlike clearState: true, which drops us back at the dev-launcher.
+- launchApp:
+    clearKeychain: true
 
 # Allow the app's animation/initialization phase to complete before querying
 # the accessibility tree. Without this, XCTest can return kAXErrorInvalidUIElement
 # (HTTP 500) and crash the subsequent conditional-logout check.
 - waitForAnimationToEnd
 
-# If a previous run left someone signed in, log them out first.
-# The 'when: visible:' guard polls the current accessibility tree — if
-# "Open profile menu" is present we're on the Home screen and need to log out;
-# if not, we're already on the login screen and this is a no-op.
+# Belt-and-braces: if some other state survives (e.g. a previous run that did
+# not use keychain storage), log out before proceeding.
 - runFlow:
     when:
       visible: "Open profile menu"
