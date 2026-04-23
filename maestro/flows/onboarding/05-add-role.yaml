@@ -187,7 +187,7 @@ appId: com.musicians.app
 - assertVisible: "Hello promoter1"
 
 # =============================================================================
-# Verify completion — both roles now present, add-role picker shows zero-state
+# Verify completion — both roles now present (Settings row disabled copy)
 # =============================================================================
 # Open the drawer again to navigate back to Settings.
 - tapOn:
@@ -199,22 +199,13 @@ appId: com.musicians.app
 - assertVisible:
     id: "settings-screen"
 
-# Tap "Add role" again. promoter1 now has both musician and promoter roles so
-# there are no addable roles left. The picker should render the zero-state view.
-- tapOn:
+# With both musician and promoter roles now held, the Add-role row is disabled
+# (computeAddableRoles returns []). The row's help text flips to the
+# "no addable roles left" copy. Tapping the disabled Pressable is a no-op, so
+# we verify the disabled state via the help-text copy rather than attempting
+# to navigate into the picker. Seeing this copy proves the AuthContext was
+# updated synchronously via setRoles(...) in the mutation's onSuccess — the
+# addable-roles computation now sees both roles without a page reload.
+- assertVisible:
     id: "settings-add-role"
-
-- assertVisible:
-    id: "add-role-picker"
-
-# Assert the zero-state is visible — this confirms the AuthContext was updated
-# synchronously (via setRoles in the mutation's onSuccess) so the addable-roles
-# computation correctly sees both roles without a full page reload.
-- assertVisible:
-    id: "add-role-zero-state"
-
-# Neither role tile should be present (both already held).
-- assertNotVisible:
-    id: "add-role-option-musician"
-- assertNotVisible:
-    id: "add-role-option-promoter"
+- assertVisible: "You've already added every available role."
