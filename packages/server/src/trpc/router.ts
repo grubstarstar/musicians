@@ -15,7 +15,10 @@ import {
   upsertMusicianProfile,
 } from '../musicianProfiles/queries.js';
 import { getPromoterGroupDetail } from '../promoterGroups/getPromoterGroupDetail.js';
-import { listMyPromoterGroups } from '../promoterGroups/queries.js';
+import {
+  isMemberOfPromoterGroup,
+  listMyPromoterGroups,
+} from '../promoterGroups/queries.js';
 import { getUpcomingRehearsalsForBand } from '../rehearsals/queries.js';
 import {
   createEoi,
@@ -35,8 +38,11 @@ import {
 import {
   bandMembers,
   bands,
+  promoterGroups,
+  promotersPromoterGroups,
   requestKindEnum,
   requests,
+  userRoles,
   venues,
   type EoiDetails,
 } from '../schema.js';
@@ -259,6 +265,14 @@ export const appRouter = router({
             kind: z.literal('band_join'),
             bandId: z.number().int().positive(),
           }),
+          // `promoter_group_join` (MUS-88): mirror of band_join for promoter
+          // groups. Acceptance is authorised for any existing member of the
+          // target group and inserts the requester into
+          // `promoters_promoter_groups`.
+          z.object({
+            kind: z.literal('promoter_group_join'),
+            promoterGroupId: z.number().int().positive(),
+          }),
         ]),
       )
       .mutation(async ({ ctx, input }) => {
@@ -368,6 +382,34 @@ export const appRouter = router({
           return createRequest(input, userId);
         }
 
+        if (input.kind === 'promoter_group_join') {
+          // promoter_group_join (MUS-88): mirror of band_join for promoter
+          // groups. Verify the group exists and reject up-front if the
+          // requester is already a member so accepting never silently no-ops.
+          const [group] = await db
+            .select({ id: promoterGroups.id })
+            .from(promoterGroups)
+            .where(eq(promoterGroups.id, input.promoterGroupId))
+            .limit(1);
+          if (!group) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Promoter group not found',
+            });
+          }
+          const alreadyMember = await isMemberOfPromoterGroup(
+            userId,
+            input.promoterGroupId,
+          );
+          if (alreadyMember) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'You are already a member of this promoter group',
+            });
+          }
+          return createRequest(input, userId);
+        }
+
         // band-for-musician: no gating beyond authentication. Free-text
         // instrument for this slice — MUS-68 swaps to the taxonomy.
         return createRequest(input, userId);
@@ -448,6 +490,151 @@ export const appRouter = router({
             await tx
               .insert(bandMembers)
               .values({ band_id: targetBandId, user_id: req.sourceUserId })
+              .onConflictDoNothing();
+            await tx
+              .update(requests)
+              .set({
+                status: 'closed',
+                slots_filled: 1,
+                updated_at: now,
+              })
+              .where(eq(requests.id, req.id));
+            return { requestId: req.id, status: 'closed' as const };
+          }
+
+          // Rejected: close the request without touching membership.
+          await tx
+            .update(requests)
+            .set({ status: 'closed', updated_at: now })
+            .where(eq(requests.id, req.id));
+          return { requestId: req.id, status: 'closed' as const };
+        });
+      }),
+    // promoter_group_join response (MUS-88). Mirror of `respondToBandJoin` for
+    // promoter groups: any existing member of the target group can accept or
+    // reject. Acceptance inserts the requester into the group (creating a
+    // `user_roles` row with role='promoter' first if they don't already have
+    // one, since the join table FKs a `user_roles` row rather than the user
+    // directly) and marks the request closed. Rejection closes without
+    // touching membership.
+    //
+    // Kept as a kind-specific procedure for the same reason as
+    // `respondToBandJoin` — EoI's authority model gates on source_user_id but
+    // we want any existing group member to decide, not just the requester.
+    respondToPromoterGroupJoin: protectedProcedure
+      .input(
+        z.object({
+          requestId: z.number().int().positive(),
+          decision: z.enum(['accepted', 'rejected']),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        return db.transaction(async (tx) => {
+          const [req] = await tx
+            .select({
+              id: requests.id,
+              kind: requests.kind,
+              status: requests.status,
+              sourceUserId: requests.source_user_id,
+              details: requests.details,
+            })
+            .from(requests)
+            .where(eq(requests.id, input.requestId))
+            .limit(1);
+          if (!req) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Request not found' });
+          }
+          if (
+            req.kind !== 'promoter_group_join' ||
+            req.details.kind !== 'promoter_group_join'
+          ) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'This request is not a promoter_group_join request',
+            });
+          }
+          if (req.status !== 'open') {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'Request is not open',
+            });
+          }
+          const targetGroupId = req.details.promoterGroupId;
+          // Any existing member of the target group is authorised to decide.
+          // Resolve membership the same way `isMemberOfPromoterGroup` does:
+          // user_roles (role='promoter') → promoters_promoter_groups.
+          const [callerMembership] = await tx
+            .select({ id: promotersPromoterGroups.id })
+            .from(promotersPromoterGroups)
+            .innerJoin(
+              userRoles,
+              eq(userRoles.id, promotersPromoterGroups.user_role_id),
+            )
+            .where(
+              and(
+                eq(promotersPromoterGroups.promoter_group_id, targetGroupId),
+                eq(userRoles.user_id, userId),
+                eq(userRoles.role, 'promoter'),
+              ),
+            )
+            .limit(1);
+          if (!callerMembership) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message:
+                'Only an existing member of the target promoter group can respond to a promoter_group_join request',
+            });
+          }
+
+          const now = new Date();
+
+          if (input.decision === 'accepted') {
+            // Acceptance path: the requester needs both a `user_roles` row
+            // with role='promoter' AND a `promoters_promoter_groups` row
+            // linking that role to the group. The onboarding flow for the
+            // requester may or may not have already created the promoter
+            // role row (MUS-86 carries roles on `users` but MUS-6's
+            // `user_roles` remains the FK target for group membership), so
+            // we upsert both defensively.
+            //
+            // `user_roles` has a unique index on (user_id, role) —
+            // `onConflictDoNothing` makes it idempotent. We then select the
+            // row (returning's not guaranteed to produce a row when nothing
+            // was inserted) to get the role id to insert into the join
+            // table.
+            await tx
+              .insert(userRoles)
+              .values({ user_id: req.sourceUserId, role: 'promoter' })
+              .onConflictDoNothing();
+            const [requesterRole] = await tx
+              .select({ id: userRoles.id })
+              .from(userRoles)
+              .where(
+                and(
+                  eq(userRoles.user_id, req.sourceUserId),
+                  eq(userRoles.role, 'promoter'),
+                ),
+              )
+              .limit(1);
+            if (!requesterRole) {
+              // Belt-and-braces: the upsert path above should always leave a
+              // row. Fail loud if the invariant ever breaks rather than
+              // silently closing the request without creating the membership.
+              throw new TRPCError({
+                code: 'INTERNAL_SERVER_ERROR',
+                message: 'Failed to resolve requester promoter role',
+              });
+            }
+            // Idempotent insert via the unique index on (user_role_id,
+            // promoter_group_id). Mirrors the band_members `onConflictDoNothing`
+            // pattern so a concurrent insert doesn't crash the accept.
+            await tx
+              .insert(promotersPromoterGroups)
+              .values({
+                user_role_id: requesterRole.id,
+                promoter_group_id: targetGroupId,
+              })
               .onConflictDoNothing();
             await tx
               .update(requests)

@@ -85,6 +85,13 @@
       "when": 1777100000000,
       "tag": "0011_users_roles_column",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1777150000000,
+      "tag": "0012_promoter_group_join_request_kind",
+      "breakpoints": true
     }
   ]
 }

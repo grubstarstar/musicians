@@ -64,6 +64,14 @@ export type RequestCreateInput =
   | {
       kind: 'band_join';
       bandId: number;
+    }
+  // `promoter_group_join` (MUS-88): requester (source) asks to join a specific
+  // promoter group. No anchor column for promoter groups on `requests`, so
+  // the target group id only lives in details. Slot_count = 1 — one accept
+  // (by any existing group member) closes the request.
+  | {
+      kind: 'promoter_group_join';
+      promoterGroupId: number;
     };
 
 export interface RequestInsertValues {
@@ -210,17 +218,39 @@ export function buildRequestInsertValues(
     };
   }
 
-  // band_join (MUS-87): requester is the source, the target band is the
-  // anchor. Slot_count = 1 — one accept (by any existing band member) closes
-  // the request and inserts the requester into `band_members`.
+  if (input.kind === 'band_join') {
+    // band_join (MUS-87): requester is the source, the target band is the
+    // anchor. Slot_count = 1 — one accept (by any existing band member) closes
+    // the request and inserts the requester into `band_members`.
+    const details: RequestDetails = {
+      kind: 'band_join',
+      bandId: input.bandId,
+    };
+    return {
+      kind: 'band_join',
+      source_user_id: userId,
+      anchor_band_id: input.bandId,
+      anchor_gig_id: null,
+      details,
+      slot_count: 1,
+      slots_filled: 0,
+      status: 'open',
+    };
+  }
+
+  // promoter_group_join (MUS-88): requester is the source, the target group
+  // id only lives in `details.promoterGroupId` (no promoter-group anchor
+  // column on `requests`). Slot_count = 1 — one accept (by any existing
+  // group member) closes the request and inserts the requester into
+  // `promoters_promoter_groups`.
   const details: RequestDetails = {
-    kind: 'band_join',
-    bandId: input.bandId,
+    kind: 'promoter_group_join',
+    promoterGroupId: input.promoterGroupId,
   };
   return {
-    kind: 'band_join',
+    kind: 'promoter_group_join',
     source_user_id: userId,
-    anchor_band_id: input.bandId,
+    anchor_band_id: null,
     anchor_gig_id: null,
     details,
     slot_count: 1,
