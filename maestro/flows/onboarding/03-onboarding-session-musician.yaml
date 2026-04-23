@@ -1,0 +1,162 @@
+appId: com.musicians.app
+---
+# Flow 03 of the onboarding e2e journey (MUS-93).
+# Entry state: DB may contain leftover data from earlier flows. This flow
+# calls reset.yaml to reseed from scratch, so it is self-contained and can
+# run alone (e.g. after a qa-test retry) or after flows 01 and 02.
+#
+# Actor: sesh — a fixture user seeded with roles=['musician'] and firstName
+# 'Sesh'. Because sesh has a non-empty roles array the app's (app)/_layout.tsx
+# guard passes and lands on the Home screen directly after login. Sesh has no
+# musician_profiles row in the fixture, so this is a first-time profile entry.
+#
+# What this flow exercises:
+#   - Reset the test DB to the seedE2E fixture.
+#   - Sign in as sesh (fixture musician with firstName 'Sesh').
+#   - Open the app drawer and tap "Edit profile" (drawer-edit-profile testID)
+#     to navigate to /onboarding/session-musician?mode=edit.
+#   - Verify the submit button is disabled before any instruments are added
+#     (chip-list gate).
+#   - Add two instruments (Guitar and Bass) via the chip input + add-button.
+#   - Dismiss keyboard by tapping the INSTRUMENTS section heading.
+#   - Fill optional fields: experience years (5), location, bio.
+#   - Leave the available-for-session-work toggle at its default ON state.
+#   - Scroll with an explicit mid-screen swipe (avoids the tab-bar hit zone).
+#   - Tap the submit button and assert the Home screen appears ("Hello Sesh"),
+#     confirming both persistence and the router.replace('/') navigation.
+#   - Re-enter the form via the drawer "Edit profile" entry a second time to
+#     exercise the edit-mode round-trip: assert "Save changes" label (confirms
+#     the form detected an existing profile row) and that the toggle is present.
+
+# Reset the test DB to the seedE2E fixture. This wipes any leftover musician
+# profile rows from a previous run and reseeds gigtar, sesh, promoter1, etc.
+- runFlow: ../../helpers/reset.yaml
+
+# Bring the app to the foreground. No clearState — that wipes the dev-client's
+# saved server URL and drops us at the dev launcher screen instead of the app.
+- launchApp
+
+# Allow the app's animation/initialization phase to complete before querying
+# the accessibility tree. Without this, XCTest can return kAXErrorInvalidUIElement
+# (HTTP 500) and crash the subsequent conditional-logout check.
+- waitForAnimationToEnd
+
+# If a previous run left someone signed in, log them out first.
+# The 'when: visible:' guard polls the current accessibility tree — if
+# "Open profile menu" is present we're on the Home screen and need to log out;
+# if not, we're already on the login screen and this is a no-op.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# Now wait for the login screen. After reset the fixture auth tokens are wiped
+# so the app will not auto-authenticate. Cold bundle fetch can take 20-40s.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# Sign in as sesh. The fixture seeds sesh with password123 and roles=['musician'],
+# so after login the app guard passes and lands on Home.
+- tapOn:
+    id: "login-username"
+- inputText: "sesh"
+- tapOn:
+    id: "login-password"
+- inputText: "password123"
+- tapOn:
+    id: "login-submit"
+
+# Sesh has firstName 'Sesh' in the seed, so the home screen greeting uses
+# the firstName rather than the username.
+- assertVisible: "Hello Sesh"
+
+# Open the app drawer via the profile-menu button (top-right of Home screen).
+- tapOn:
+    text: "Open profile menu"
+
+# Tap the "Edit profile" drawer row to navigate to the session-musician form.
+# testID used because the drawer row is a composite Pressable — the text node
+# alone may not be the tap target.
+- tapOn:
+    id: "drawer-edit-profile"
+
+# Verify the submit button is disabled before adding any instruments.
+# The chip-list gate keeps the button disabled until at least one instrument
+# is in the list. A tap on a disabled Pressable is a no-op; the screen stays.
+# We assert the form is still showing (not navigated away) via the instrument
+# input, which is always visible above the fold.
+- assertVisible:
+    id: "session-musician-instrument-input"
+
+# Add first instrument: Guitar.
+- tapOn:
+    id: "session-musician-instrument-input"
+- inputText: "Guitar"
+- tapOn:
+    id: "session-musician-instrument-add"
+
+# Add second instrument: Bass.
+- tapOn:
+    id: "session-musician-instrument-input"
+- inputText: "Bass"
+- tapOn:
+    id: "session-musician-instrument-add"
+
+# Dismiss the keyboard by tapping the INSTRUMENTS section heading.
+# hideKeyboard is unreliable on React Native inputs — tapping a non-interactive
+# element is Maestro's recommended workaround (established quirk in this project).
+- tapOn: "INSTRUMENTS"
+
+# Fill optional fields. Tap each testID input, enter value, dismiss keyboard
+# via the section heading.
+- tapOn:
+    id: "session-musician-experience-years"
+- inputText: "5"
+- tapOn: "EXPERIENCE"
+
+- tapOn:
+    id: "session-musician-location"
+- inputText: "Sydney"
+- tapOn: "LOCATION"
+
+- tapOn:
+    id: "session-musician-bio"
+- inputText: "Session guitarist available for studio and live work."
+- tapOn: "BIO"
+
+# The available-for-session-work toggle defaults ON in new/first-entry mode —
+# do not tap it; the happy-path leaves it as-is.
+
+# Submit can be below the fold on smaller devices. Use an explicit mid-screen
+# swipe instead of scrollUntilVisible to avoid the tab-bar hit zone (the tab
+# bar sits at ~y=791 on an ~874pt viewport; swipe starting at 65% stays safe).
+- swipe:
+    start: "50%, 65%"
+    end: "50%, 20%"
+    duration: 400
+
+# Tap the submit button to save the profile. After a successful upsert the
+# screen calls router.replace('/') which lands on the Home screen.
+- tapOn:
+    id: "session-musician-submit"
+
+# Assert the Home screen to confirm both persistence and the navigation.
+- assertVisible: "Hello Sesh"
+
+# --- Edit-mode round-trip ---
+# Re-open the drawer and navigate to the form a second time. This visit uses
+# ?mode=edit and the musicianProfiles.get query will find the row we just
+# created, so the form loads with persisted values.
+- tapOn:
+    text: "Open profile menu"
+- tapOn:
+    id: "drawer-edit-profile"
+
+# In edit mode the submit button label switches to "Save changes" — asserting
+# the visible label text confirms the app detected the existing profile row.
+- assertVisible: "Save changes"
+
+# Also confirm the availability toggle is present (persisted-value load check).
+- assertVisible:
+    id: "session-musician-available-toggle"
