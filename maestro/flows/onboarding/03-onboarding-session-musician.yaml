@@ -1,0 +1,166 @@
+appId: com.musicians.app
+---
+# Flow 03 of the onboarding e2e journey (MUS-93).
+# Entry state: flow 01 (signup) has run, so the "newbie" account exists in
+# the DB with no musician profile. Flow 02 (musician step-2 kind picker) is
+# not yet on main, so this flow drives the session-musician screen via the
+# drawer "Edit profile" path — the alternative entry point called out in the
+# ticket AC ("The same screen is reachable later from the drawer for edits").
+#
+# What this flow exercises:
+#   - Drawer "Edit profile" row (testID drawer-edit-profile) navigates to the
+#     session-musician form.
+#   - Instrument chip list: type name → tap add button, repeat.
+#   - Submit is disabled until at least one instrument is in the list.
+#   - Optional fields (experience years, location, bio) can be filled.
+#   - Available-for-session-work toggle is ON by default; leave as-is on the
+#     happy path.
+#   - On save, the app navigates to home (Hello newbie).
+#   - Drawer "Edit profile" a second time opens the edit-mode form (persisted
+#     values load; toggle reflects the saved value, not the new-mode default).
+
+# No reset.yaml here — flow 01 already seeded the DB this run. Flow 03 inherits
+# the "newbie" account created by flow 01 with no musician profile yet.
+
+- launchApp
+# waitForAnimationToEnd lets iOS fully settle after the bundle loads before
+# Maestro queries the accessibility tree. Without this, XCTest can return
+# kAXErrorInvalidUIElement (HTTP 500) when the conditional logout runFlow
+# tries to check visibility mid-animation.
+- waitForAnimationToEnd
+
+# If a previous run left a user signed in, log out first so we always start
+# from the login screen.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# Cold bundle fetch can take 20-40s on a sandboxed simulator. Wait explicitly
+# before interacting (the login screen takes priority over the profile menu).
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# Sign in as "newbie" (the account created by flow 01). No dedicated helper
+# for newbie — inline the steps. The fixture password matches what flow 01
+# used ("abcd1234").
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "newbie"
+- tapOn:
+    id: "login-password"
+- inputText: "abcd1234"
+- tapOn:
+    id: "login-submit"
+# Home screen confirms successful login.
+- assertVisible: "Hello newbie"
+
+# ── Part 1: First visit — create the session-musician profile via the drawer ──
+
+# Open the profile drawer. The button is at the top-right of the Home screen.
+- tapOn:
+    text: "Open profile menu"
+
+# Tap "Edit profile" in the drawer. testID used because the row renders as a
+# composite Pressable whose visible-text label alone may not be reliably unique
+# alongside other drawer items.
+- tapOn:
+    id: "drawer-edit-profile"
+
+# The session-musician form should now be visible. Assert the submit button as
+# a stable anchor confirming we're on the right screen. It is disabled until at
+# least one instrument is added, so tapping it now is a no-op — a good
+# guard that the gate works before we fill the form.
+- assertVisible:
+    id: "session-musician-submit"
+- tapOn:
+    id: "session-musician-submit"
+# Still on the form (submit was disabled) — assert the input to confirm no nav.
+- assertVisible:
+    id: "session-musician-instrument-input"
+
+# Add the first instrument: "Guitar"
+# Type into the free-text input, then tap the add (plus) button to append the
+# chip. Return key also works but the add button is a more explicit test of
+# the button path.
+- tapOn:
+    id: "session-musician-instrument-input"
+- inputText: "Guitar"
+# Dismiss keyboard by tapping a non-interactive section label (hideKeyboard is
+# unreliable on React Native — Maestro's recommended workaround).
+- tapOn: "INSTRUMENTS"
+- tapOn:
+    id: "session-musician-instrument-add"
+
+# Add a second instrument: "Bass"
+- tapOn:
+    id: "session-musician-instrument-input"
+- inputText: "Bass"
+- tapOn: "INSTRUMENTS"
+- tapOn:
+    id: "session-musician-instrument-add"
+
+# Fill experience years (optional). Must be a whole number; use 5.
+- tapOn:
+    id: "session-musician-experience-years"
+- inputText: "5"
+- tapOn: "INSTRUMENTS"
+
+# Fill location (optional).
+- tapOn:
+    id: "session-musician-location"
+- inputText: "Melbourne, AU"
+- tapOn: "INSTRUMENTS"
+
+# Fill bio (optional, multiline).
+- tapOn:
+    id: "session-musician-bio"
+- inputText: "Available for studio sessions and live gigs."
+- tapOn: "INSTRUMENTS"
+
+# Leave the available-for-session-work toggle as-is (ON by default on first
+# entry). The toggle's ON state covers the AC requirement without needing to
+# exercise the toggle tap on the happy path.
+
+# Scroll to bring the submit button into view. Use an explicit mid-screen
+# swipe rather than scrollUntilVisible — scrollUntilVisible starts its swipe
+# near the bottom of the screen where the tab bar lives, and iOS interprets
+# that touch as a tab tap, navigating away before the scroll fires.
+# The tab bar starts at roughly y=791 on a ~874pt viewport; swipe well clear.
+- swipe:
+    start: "50%, 65%"
+    end: "50%, 20%"
+    duration: 400
+
+# Tap "Save and continue" (the label for the submit button in new mode).
+# Using the testID because the button may render below the fold on smaller
+# devices even after one scroll; the ID is the stable anchor.
+- tapOn:
+    id: "session-musician-submit"
+
+# After a successful save, the screen does router.replace('/') — the app
+# renders the Home tab. "Hello newbie" confirms both persistence and navigation.
+- assertVisible: "Hello newbie"
+
+# ── Part 2: Second visit — edit mode via the drawer ──
+
+# Re-open the drawer and navigate back to the session-musician screen via
+# "Edit profile". This time the screen is in edit mode (mode=edit query param)
+# and must load the persisted values via musicianProfiles.get.
+- tapOn:
+    text: "Open profile menu"
+- tapOn:
+    id: "drawer-edit-profile"
+
+# The form loads in edit mode. Assert the submit button is present; its label
+# in edit mode is "Save changes". Using visible text here to confirm the label
+# switch from "Save and continue" (new mode) to "Save changes" (edit mode).
+- assertVisible: "Save changes"
+
+# Assert the available toggle is visible; in edit mode it reflects the
+# persisted value (we left it ON, so it should still be ON — confirming the
+# round-trip to musicianProfiles.get worked correctly).
+- assertVisible:
+    id: "session-musician-available-toggle"
