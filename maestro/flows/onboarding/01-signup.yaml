@@ -86,6 +86,12 @@ appId: com.musicians.app
 # Dismiss the keyboard again before tapping submit.
 - tapOn: "PASSWORD"
 
+# Wait for the keyboard dismiss animation to complete before tapping submit.
+# Without this, the XCUITest gesture engine reports "only one gesture can be
+# performed at a time" because the keyboard slide-out animation is still in
+# flight when Maestro fires the next tap.
+- waitForAnimationToEnd
+
 # Submit the form. signup-submit is now enabled (username non-empty, password
 # >= 8 chars) so the tap fires the register request. No scroll needed — the
 # submit button is visible on this short form without scrolling.
