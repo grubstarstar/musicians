@@ -1,10 +1,13 @@
 appId: com.musicians.app
 ---
-# Flow 02 of the request-to-join e2e journey (MUS-71).
+# Flow 02 of the request-to-join e2e journey (MUS-71, updated MUS-68).
 # State at entry: gigtar is signed in (left over from flow 01).
 # - Log gigtar out via the drawer.
 # - Log in as sesh.
-# - Navigate to Notices, open The Testers' Bass request, and Express interest.
+# - Navigate to Notices, open The Testers' Bass Guitar request, and Express interest.
+#
+# MUS-68: the instrument is now stored as an instrumentId and displayed via the
+# server-denormalised instrumentName ("Bass Guitar"). Updated selectors accordingly.
 - runFlow: ../../helpers/logout.yaml
 - runFlow: ../../helpers/login-sesh.yaml
 
@@ -16,12 +19,12 @@ appId: com.musicians.app
 # composed label so both visibility + tap hit the same element.
 - tapOn: "Notices, tab.*"
 - assertVisible: "Bands looking for musicians right now"
-- assertVisible: "Open request from The Testers for Bass"
-- tapOn: "Open request from The Testers for Bass"
+- assertVisible: "Open request from The Testers for Bass Guitar"
+- tapOn: "Open request from The Testers for Bass Guitar"
 
 # Detail screen for the request. The instrument is rendered as the
-# `detailsHeading` ("Bass") and the `extraRows` include "Slots 0 / 1 filled".
-- assertVisible: "Bass"
+# `detailsHeading` ("Bass Guitar") and the `extraRows` include "Slots 0 / 1 filled".
+- assertVisible: "Bass Guitar"
 - assertVisible: "Looking for"
 # Submit: the instructions allow leaving the optional note empty.
 - tapOn: "Express interest"
