@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { computeBandAllocationUpdates } from './computeBandAllocationUpdates.js';
 
+// MUS-68: updated to assert id-equality semantics. The previous
+// string-normalisation behaviour is gone — ids come from the `instruments`
+// taxonomy so there's no normalisation to do.
+
 describe('computeBandAllocationUpdates', () => {
   it('returns an empty list when there are no siblings', () => {
-    expect(computeBandAllocationUpdates([], 'bass')).toEqual([]);
+    expect(computeBandAllocationUpdates([], 10)).toEqual([]);
   });
 
-  it('returns an empty list when the joining instrument is blank', () => {
+  it('returns an empty list when the joining instrumentId is non-positive', () => {
     expect(
       computeBandAllocationUpdates(
         [
@@ -14,11 +18,11 @@ describe('computeBandAllocationUpdates', () => {
             id: 1,
             slotsFilled: 0,
             slotCount: 1,
-            instrument: 'bass',
+            instrumentId: 10,
             pendingEoiIds: [],
           },
         ],
-        '   ',
+        0,
       ),
     ).toEqual([]);
   });
@@ -31,11 +35,11 @@ describe('computeBandAllocationUpdates', () => {
             id: 1,
             slotsFilled: 0,
             slotCount: 1,
-            instrument: 'Bass',
+            instrumentId: 10,
             pendingEoiIds: [],
           },
         ],
-        'bass',
+        10,
       ),
     ).toEqual([
       { id: 1, newSlotsFilled: 1, shouldClose: true, eoiIdsToAutoReject: [] },
@@ -50,11 +54,11 @@ describe('computeBandAllocationUpdates', () => {
             id: 7,
             slotsFilled: 1,
             slotCount: 3,
-            instrument: 'bass',
+            instrumentId: 10,
             pendingEoiIds: [],
           },
         ],
-        'bass',
+        10,
       ),
     ).toEqual([
       { id: 7, newSlotsFilled: 2, shouldClose: false, eoiIdsToAutoReject: [] },
@@ -69,11 +73,11 @@ describe('computeBandAllocationUpdates', () => {
             id: 10,
             slotsFilled: 0,
             slotCount: 1,
-            instrument: 'bass',
+            instrumentId: 10,
             pendingEoiIds: [101, 102, 103],
           },
         ],
-        'bass',
+        10,
       ),
     ).toEqual([
       {
@@ -93,18 +97,18 @@ describe('computeBandAllocationUpdates', () => {
             id: 11,
             slotsFilled: 1,
             slotCount: 5,
-            instrument: 'bass',
+            instrumentId: 10,
             pendingEoiIds: [201, 202],
           },
         ],
-        'bass',
+        10,
       ),
     ).toEqual([
       { id: 11, newSlotsFilled: 2, shouldClose: false, eoiIdsToAutoReject: [] },
     ]);
   });
 
-  it('omits siblings whose instrument does not match', () => {
+  it('omits siblings whose instrumentId does not match', () => {
     // A drummer joining does not affect the band's open bass-player search.
     expect(
       computeBandAllocationUpdates(
@@ -113,18 +117,18 @@ describe('computeBandAllocationUpdates', () => {
             id: 1,
             slotsFilled: 0,
             slotCount: 1,
-            instrument: 'bass',
+            instrumentId: 10,
             pendingEoiIds: [901],
           },
           {
             id: 2,
             slotsFilled: 0,
             slotCount: 1,
-            instrument: 'guitar',
+            instrumentId: 11,
             pendingEoiIds: [902],
           },
         ],
-        'drums',
+        12,
       ),
     ).toEqual([]);
   });
@@ -138,7 +142,7 @@ describe('computeBandAllocationUpdates', () => {
             id: 1,
             slotsFilled: 0,
             slotCount: 1,
-            instrument: 'Bass Guitar',
+            instrumentId: 10,
             pendingEoiIds: [901],
           },
           // Non-matching — untouched
@@ -146,7 +150,7 @@ describe('computeBandAllocationUpdates', () => {
             id: 2,
             slotsFilled: 0,
             slotCount: 2,
-            instrument: 'drums',
+            instrumentId: 11,
             pendingEoiIds: [902, 903],
           },
           // Matching — stays open
@@ -154,11 +158,11 @@ describe('computeBandAllocationUpdates', () => {
             id: 3,
             slotsFilled: 0,
             slotCount: 3,
-            instrument: 'bass guitar',
+            instrumentId: 10,
             pendingEoiIds: [904],
           },
         ],
-        'bass guitar',
+        10,
       ),
     ).toEqual([
       { id: 1, newSlotsFilled: 1, shouldClose: true, eoiIdsToAutoReject: [901] },
@@ -166,7 +170,7 @@ describe('computeBandAllocationUpdates', () => {
     ]);
   });
 
-  it('treats case + whitespace differences as matching (same normalisation as matchesMusicianRequest)', () => {
+  it('skips siblings with non-positive instrumentId (defensive)', () => {
     expect(
       computeBandAllocationUpdates(
         [
@@ -174,15 +178,13 @@ describe('computeBandAllocationUpdates', () => {
             id: 1,
             slotsFilled: 0,
             slotCount: 1,
-            instrument: '  BASS  ',
+            instrumentId: 0,
             pendingEoiIds: [],
           },
         ],
-        'bass',
+        0,
       ),
-    ).toEqual([
-      { id: 1, newSlotsFilled: 1, shouldClose: true, eoiIdsToAutoReject: [] },
-    ]);
+    ).toEqual([]);
   });
 
   it('does not mutate the input array', () => {
@@ -191,17 +193,17 @@ describe('computeBandAllocationUpdates', () => {
         id: 1,
         slotsFilled: 0,
         slotCount: 2,
-        instrument: 'bass',
+        instrumentId: 10,
         pendingEoiIds: [42],
       },
     ];
-    computeBandAllocationUpdates(siblings, 'bass');
+    computeBandAllocationUpdates(siblings, 10);
     expect(siblings).toEqual([
       {
         id: 1,
         slotsFilled: 0,
         slotCount: 2,
-        instrument: 'bass',
+        instrumentId: 10,
         pendingEoiIds: [42],
       },
     ]);

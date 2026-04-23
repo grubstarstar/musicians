@@ -9,6 +9,10 @@ import {
 } from '../bands/queries.js';
 import { db } from '../db.js';
 import {
+  listInstruments,
+  searchInstruments,
+} from '../instruments/queries.js';
+import {
   countOpenSlots,
   createGig,
   getGigById,
@@ -246,6 +250,20 @@ export const appRouter = router({
         return upsertMusicianProfile(userId, input);
       }),
   }),
+  // Instruments taxonomy (MUS-68). Read-only surface for the Post Request
+  // autocomplete and future filtering UIs.
+  //   - `list` returns the full 150–200 row taxonomy (one query, no pagination).
+  //   - `search(query)` feeds the debounced autocomplete: prefix matches
+  //     first, then contains matches, sorted by category then name.
+  // Both are `protectedProcedure` — the autocomplete is only reachable from
+  // authenticated screens today, and gating consistently is simpler than
+  // making half the lookup surface public.
+  instruments: router({
+    list: protectedProcedure.query(() => listInstruments()),
+    search: protectedProcedure
+      .input(z.object({ query: z.string() }))
+      .query(({ input }) => searchInstruments(input.query)),
+  }),
   // Venues (MUS-58). Minimal list endpoint so the mobile
   // `promoter-for-venue-night` form can let the caller pick a venue. No
   // authorisation gating beyond authentication for this slice — the
@@ -312,7 +330,10 @@ export const appRouter = router({
           z.object({
             kind: z.literal('musician-for-band'),
             bandId: z.number().int().positive(),
-            instrument: z.string().min(1),
+            // MUS-68: instrumentId resolved against the controlled `instruments`
+            // taxonomy (the autocomplete picks this). Free-text fallbacks are
+            // mapped to the canonical "Other" row client-side before submit.
+            instrumentId: z.number().int().positive(),
             style: z.string().optional(),
             rehearsalCommitment: z.string().optional(),
           }),
@@ -360,7 +381,8 @@ export const appRouter = router({
           // object. Acceptance adds the musician to the EoI-supplied band.
           z.object({
             kind: z.literal('band-for-musician'),
-            instrument: z.string().min(1),
+            // MUS-68: see musician-for-band above.
+            instrumentId: z.number().int().positive(),
             availability: z.string().min(1).optional(),
             demosUrl: z.string().min(1).optional(),
           }),

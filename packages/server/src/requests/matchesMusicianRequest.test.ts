@@ -1,82 +1,46 @@
 import { describe, expect, it } from 'vitest';
-import {
-  matchesMusicianRequest,
-  normaliseInstrument,
-} from './matchesMusicianRequest.js';
-
-describe('normaliseInstrument', () => {
-  it('lowercases and trims', () => {
-    expect(normaliseInstrument('  Bass Guitar  ')).toBe('bass guitar');
-  });
-
-  it('is idempotent on already-normalised values', () => {
-    expect(normaliseInstrument('drums')).toBe('drums');
-  });
-
-  it('preserves internal spacing (not collapsed)', () => {
-    expect(normaliseInstrument('Acoustic  Guitar')).toBe('acoustic  guitar');
-  });
-});
+import { matchesMusicianRequest } from './matchesMusicianRequest.js';
 
 describe('matchesMusicianRequest', () => {
-  it('matches on identical lowercase strings', () => {
+  it('matches on identical instrument ids', () => {
     expect(
       matchesMusicianRequest(
-        { instrument: 'bass' },
-        { instrument: 'bass' },
+        { instrumentId: 42 },
+        { instrumentId: 42 },
       ),
     ).toBe(true);
   });
 
-  it('matches case-insensitively', () => {
+  it('does not match different instrument ids', () => {
+    // MUS-68: a "Bass Guitar" id no longer matches a "Bass" id even though
+    // the strings are similar. That's the whole point of the taxonomy.
     expect(
       matchesMusicianRequest(
-        { instrument: 'Bass Guitar' },
-        { instrument: 'bass guitar' },
-      ),
-    ).toBe(true);
-  });
-
-  it('matches across leading/trailing whitespace', () => {
-    expect(
-      matchesMusicianRequest(
-        { instrument: '  drums  ' },
-        { instrument: 'Drums' },
-      ),
-    ).toBe(true);
-  });
-
-  it('does not match different instruments', () => {
-    expect(
-      matchesMusicianRequest(
-        { instrument: 'bass' },
-        { instrument: 'guitar' },
+        { instrumentId: 42 },
+        { instrumentId: 43 },
       ),
     ).toBe(false);
   });
 
-  it('does not match "bass" vs "bass guitar" (lossy first-pass)', () => {
-    // Documented: the first-pass rule is exact-after-normalise; MUS-68
-    // will tighten via an instrument taxonomy with aliases.
+  it('returns false when either side has a non-positive id', () => {
+    // Defensive: 0 / negative ids indicate a missing or malformed row and
+    // must not surface as a match even against themselves.
     expect(
       matchesMusicianRequest(
-        { instrument: 'bass' },
-        { instrument: 'bass guitar' },
-      ),
-    ).toBe(false);
-  });
-
-  it('does not match when either side is blank', () => {
-    expect(
-      matchesMusicianRequest(
-        { instrument: '' },
-        { instrument: 'bass' },
+        { instrumentId: 0 },
+        { instrumentId: 0 },
       ),
     ).toBe(false);
     expect(
       matchesMusicianRequest(
-        { instrument: 'bass' },
-        { instrument: '   ' },
+        { instrumentId: 1 },
+        { instrumentId: 0 },
+      ),
+    ).toBe(false);
+    expect(
+      matchesMusicianRequest(
+        { instrumentId: -1 },
+        { instrumentId: 1 },
       ),
     ).toBe(false);
   });

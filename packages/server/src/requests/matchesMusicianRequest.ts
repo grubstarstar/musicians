@@ -4,39 +4,33 @@
 // plays some instrument) and a `band-for-musician` request (musician side,
 // advertising an instrument) decide whether they constitute a match.
 //
-// Rule is deliberately simple for this first-pass slice: normalise both
-// sides (lowercase + trim) and compare for exact equality. "bass guitar"
-// matches "Bass Guitar" but does NOT match "bass" — that's lossy and
-// acknowledged in the ticket. MUS-68 swaps this out for an instrument
-// taxonomy (`instrumentId` equality) once the controlled list is in place.
+// MUS-68: rule is now strict `instrumentId` equality against the controlled
+// `instruments` taxonomy. Free-text fallbacks ("bass" vs "bass guitar"
+// typos) are resolved to the canonical "Other" row at write time; that row
+// still id-matches itself, which keeps the slot-close invariant consistent
+// without forcing a nullable column.
 //
 // Kept dependency-free so it can be unit-tested without any DB or tRPC
 // surface, same structure as MUS-57's `matchesGigRequest` and MUS-58's
 // `matchesNightAtVenue`.
 
 export interface MusicianForBandMatchInput {
-  /** Instrument the band is asking for (free-text, un-normalised). */
-  instrument: string;
+  /** Instrument id the band is asking for (from the taxonomy). */
+  instrumentId: number;
 }
 
 export interface BandForMusicianMatchInput {
-  /** Instrument the musician advertises (free-text, un-normalised). */
-  instrument: string;
-}
-
-/** Normalise an instrument string for comparison: lowercase + trim. */
-export function normaliseInstrument(instrument: string): string {
-  return instrument.trim().toLowerCase();
+  /** Instrument id the musician advertises (from the taxonomy). */
+  instrumentId: number;
 }
 
 export function matchesMusicianRequest(
   musicianForBand: MusicianForBandMatchInput,
   bandForMusician: BandForMusicianMatchInput,
 ): boolean {
-  const a = normaliseInstrument(musicianForBand.instrument);
-  const b = normaliseInstrument(bandForMusician.instrument);
-  // Empty strings shouldn't match at all — an absent/blank field is
-  // meaningless for instrument comparison and should never surface as a match.
-  if (a.length === 0 || b.length === 0) return false;
-  return a === b;
+  // Zero / negative ids shouldn't match at all — they indicate a missing or
+  // malformed row and surfacing them as matches would be misleading.
+  if (musicianForBand.instrumentId <= 0) return false;
+  if (bandForMusician.instrumentId <= 0) return false;
+  return musicianForBand.instrumentId === bandForMusician.instrumentId;
 }

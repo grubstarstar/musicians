@@ -6,18 +6,22 @@ import {
   expressionsOfInterest,
   gigSlots,
   gigs,
+  instruments,
   requests,
   venues,
   type EoiDetails,
   type EoiState,
   type Request,
-  type RequestDetails,
   type RequestKind,
   type RequestStatus,
 } from '../schema.js';
 import { computeBandAllocationUpdates } from './computeBandAllocationUpdates.js';
 import { computeGigAllocationUpdates } from './computeGigAllocationUpdates.js';
 import { computeSlotOutcome } from './computeSlotOutcome.js';
+import {
+  withInstrumentName,
+  type RequestDetailsWithInstrumentName,
+} from './withInstrumentName.js';
 
 // Shaped row returned across the tRPC boundary. Always camelCase; never a raw
 // Drizzle row. Keeps API shape independent of column naming.
@@ -320,7 +324,7 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
     // invariant below also fires for this kind.
     let bandForMusicianCtx: {
       bandId: number;
-      instrument: string;
+      instrumentId: number;
     } | null = null;
     if (req.kind === 'band-for-musician') {
       if (
@@ -334,12 +338,12 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
           .values({ band_id: bandId, user_id: req.source_user_id })
           .onConflictDoNothing();
         // The allocation's instrument is the request's instrument (the
-        // musician's own declaration). `instrumentRole` on the EoI defaults
-        // to the same and is only surfaced for the UI's "joined as"
-        // narrative, not for matching.
+        // musician's own declaration — MUS-68 id from the taxonomy).
+        // `instrumentRole` on the EoI defaults to the same and is only
+        // surfaced for the UI's "joined as" narrative, not for matching.
         bandForMusicianCtx = {
           bandId,
-          instrument: req.details.instrument,
+          instrumentId: req.details.instrumentId,
         };
       }
     }
@@ -465,12 +469,12 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
     //
     // A `band-for-musician` accept puts a musician into band B on instrument
     // I. Every open `musician-for-band` request anchored to B whose
-    // (normalised) `details.instrument` matches I must have its slot
-    // counters ticked and potentially auto-close. Instruments that don't
-    // match are untouched — a drummer joining doesn't affect the band's
-    // open bass-player search.
+    // `details.instrumentId` matches I must have its slot counters ticked
+    // and potentially auto-close. Instruments that don't match are
+    // untouched — a drummer joining doesn't affect the band's open
+    // bass-player search. MUS-68: equality on instrumentId.
     if (bandForMusicianCtx !== null) {
-      const { bandId, instrument } = bandForMusicianCtx;
+      const { bandId, instrumentId } = bandForMusicianCtx;
       const openSiblings = await tx
         .select({
           id: requests.id,
@@ -516,11 +520,11 @@ export async function respondToEoi(input: RespondInput): Promise<RespondResult> 
           slotsFilled: s.slotsFilled,
           slotCount: s.slotCount,
           // Guarded above; narrow for the pure helper's input type.
-          instrument:
-            s.details.kind === 'musician-for-band' ? s.details.instrument : '',
+          instrumentId:
+            s.details.kind === 'musician-for-band' ? s.details.instrumentId : 0,
           pendingEoiIds: pendingByRequest.get(s.id) ?? [],
         }));
-      const updates = computeBandAllocationUpdates(siblingInputs, instrument);
+      const updates = computeBandAllocationUpdates(siblingInputs, instrumentId);
       for (const update of updates) {
         await tx
           .update(requests)
@@ -572,7 +576,9 @@ export interface ShapedMyEoiRow {
     id: number;
     kind: RequestKind;
     status: RequestStatus;
-    details: RequestDetails;
+    // MUS-68: `details` on instrument-carrying kinds is enriched with
+    // `instrumentName` denormalised from the `instruments` taxonomy join.
+    details: RequestDetailsWithInstrumentName;
     anchorBand: { id: number; name: string; imageUrl: string | null } | null;
     anchorGig:
       | { id: number; datetime: Date; venue: { id: number; name: string } }
@@ -615,6 +621,26 @@ export async function listMyEois(userId: number): Promise<ShapedMyEoiRow[]> {
     .where(eq(expressionsOfInterest.target_user_id, userId))
     .orderBy(desc(expressionsOfInterest.created_at));
 
+  // MUS-68: denormalise instrument names onto the request's `details` so the
+  // Applied tab list rows can render without a per-row lookup. One batched
+  // fetch covers every instrument referenced by the caller's EoIs.
+  const instrumentIdSet = new Set<number>();
+  for (const r of rows) {
+    const d = r.requestDetails;
+    if (d.kind === 'musician-for-band' || d.kind === 'band-for-musician') {
+      instrumentIdSet.add(d.instrumentId);
+    }
+  }
+  const instrumentRows = instrumentIdSet.size
+    ? await db
+        .select({ id: instruments.id, name: instruments.name })
+        .from(instruments)
+        .where(inArray(instruments.id, Array.from(instrumentIdSet)))
+    : [];
+  const instrumentNameById = new Map(
+    instrumentRows.map((i) => [i.id, i.name]),
+  );
+
   return rows.map((r) => {
     const anchorBand =
       r.anchorBandId !== null && r.anchorBandName !== null
@@ -647,7 +673,7 @@ export async function listMyEois(userId: number): Promise<ShapedMyEoiRow[]> {
         id: r.requestId,
         kind: r.requestKind,
         status: r.requestStatus,
-        details: r.requestDetails,
+        details: withInstrumentName(r.requestDetails, instrumentNameById),
         anchorBand,
         anchorGig,
       },

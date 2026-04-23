@@ -10,7 +10,7 @@ describe('buildRequestInsertValues', () => {
       const input: RequestCreateInput = {
         kind: 'musician-for-band',
         bandId: 7,
-        instrument: 'Bass',
+        instrumentId: 42,
         style: 'jazz-funk',
         rehearsalCommitment: 'weekly',
       };
@@ -22,7 +22,7 @@ describe('buildRequestInsertValues', () => {
         anchor_gig_id: null,
         details: {
           kind: 'musician-for-band',
-          instrument: 'Bass',
+          instrumentId: 42,
           style: 'jazz-funk',
           rehearsalCommitment: 'weekly',
         },
@@ -36,13 +36,13 @@ describe('buildRequestInsertValues', () => {
       const input: RequestCreateInput = {
         kind: 'musician-for-band',
         bandId: 3,
-        instrument: 'Drums',
+        instrumentId: 43,
       };
 
       const result = buildRequestInsertValues(input, 1);
 
-      expect(Object.keys(result.details).sort()).toEqual(['instrument', 'kind']);
-      expect(result.details).toEqual({ kind: 'musician-for-band', instrument: 'Drums' });
+      expect(Object.keys(result.details).sort()).toEqual(['instrumentId', 'kind']);
+      expect(result.details).toEqual({ kind: 'musician-for-band', instrumentId: 43 });
     });
 
     it('does not leak unknown input fields into details', () => {
@@ -50,14 +50,14 @@ describe('buildRequestInsertValues', () => {
       const hostile = {
         kind: 'musician-for-band',
         bandId: 1,
-        instrument: 'Synth',
+        instrumentId: 44,
         sneaky: 'should-not-leak',
         __proto__Attack: true,
       } as unknown as RequestCreateInput;
 
       const result = buildRequestInsertValues(hostile, 1);
 
-      expect(Object.keys(result.details).sort()).toEqual(['instrument', 'kind']);
+      expect(Object.keys(result.details).sort()).toEqual(['instrumentId', 'kind']);
       expect(JSON.stringify(result)).not.toContain('sneaky');
       expect(JSON.stringify(result)).not.toContain('__proto__Attack');
     });
@@ -247,7 +247,7 @@ describe('buildRequestInsertValues', () => {
     it('maps a band-for-musician input with all fields', () => {
       const input: RequestCreateInput = {
         kind: 'band-for-musician',
-        instrument: 'Bass Guitar',
+        instrumentId: 42,
         availability: 'Weekends',
         demosUrl: 'https://example.com/demos',
       };
@@ -259,7 +259,7 @@ describe('buildRequestInsertValues', () => {
         anchor_gig_id: null,
         details: {
           kind: 'band-for-musician',
-          instrument: 'Bass Guitar',
+          instrumentId: 42,
           availability: 'Weekends',
           demosUrl: 'https://example.com/demos',
         },
@@ -272,12 +272,12 @@ describe('buildRequestInsertValues', () => {
     it('omits optional availability and demosUrl when not provided', () => {
       const input: RequestCreateInput = {
         kind: 'band-for-musician',
-        instrument: 'Drums',
+        instrumentId: 43,
       };
 
       expect(buildRequestInsertValues(input, 1).details).toEqual({
         kind: 'band-for-musician',
-        instrument: 'Drums',
+        instrumentId: 43,
       });
     });
   });

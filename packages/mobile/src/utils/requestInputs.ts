@@ -12,7 +12,10 @@
 export interface MusicianForBandInput {
   kind: 'musician-for-band';
   bandId: number;
-  instrument: string;
+  // MUS-68: instrument resolved to a taxonomy id by the autocomplete. The
+  // form may still hold free text for display, but this payload sends the
+  // id (with unresolved free text mapped to the "Other" row upstream).
+  instrumentId: number;
   style?: string;
   rehearsalCommitment?: string;
 }
@@ -47,7 +50,8 @@ export interface PromoterForVenueNightInput {
 
 export interface BandForMusicianInput {
   kind: 'band-for-musician';
-  instrument: string;
+  // MUS-68: see musician-for-band above.
+  instrumentId: number;
   availability?: string;
   demosUrl?: string;
 }
@@ -69,14 +73,14 @@ export function filterMyBands<B extends { members: { id: number }[] }>(
 
 export function buildMusicianForBandInput(args: {
   bandId: number;
-  instrument: string;
+  instrumentId: number;
   style: string;
   rehearsalCommitment: string;
 }): MusicianForBandInput {
   const payload: MusicianForBandInput = {
     kind: 'musician-for-band',
     bandId: args.bandId,
-    instrument: args.instrument.trim(),
+    instrumentId: args.instrumentId,
   };
   const style = args.style.trim();
   if (style.length > 0) payload.style = style;
@@ -186,18 +190,18 @@ export function buildPromoterForVenueNightInput(args: {
 
 /**
  * Validates and shapes a band-for-musician form input. Returns `null` when
- * instrument is blank. Availability / demosUrl are dropped when empty.
+ * instrumentId isn't a valid positive id. Availability / demosUrl are
+ * dropped when empty.
  */
 export function buildBandForMusicianInput(args: {
-  instrument: string;
+  instrumentId: number | null;
   availability: string;
   demosUrl: string;
 }): BandForMusicianInput | null {
-  const instrument = args.instrument.trim();
-  if (instrument.length === 0) return null;
+  if (args.instrumentId === null || args.instrumentId <= 0) return null;
   const payload: BandForMusicianInput = {
     kind: 'band-for-musician',
-    instrument,
+    instrumentId: args.instrumentId,
   };
   const availability = args.availability.trim();
   if (availability.length > 0) payload.availability = availability;

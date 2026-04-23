@@ -335,10 +335,19 @@ describe.skipIf(skip)('requests band_join router (integration)', () => {
       const bob = callerFor(bobId);
       const alice = callerFor(aliceId);
 
-      // Post a `band-for-musician` request — a different kind.
+      // Post a `band-for-musician` request — a different kind. MUS-68:
+      // instrument is now a taxonomy id, so look up the "Drums" row first.
+      // The `instruments` table is populated by migration 0012 and is never
+      // truncated in this suite.
+      const { eq } = await import('drizzle-orm');
+      const [drums] = await db
+        .select({ id: schema.instruments.id })
+        .from(schema.instruments)
+        .where(eq(schema.instruments.name, 'Drums'))
+        .limit(1);
       const otherReq = await bob.requests.create({
         kind: 'band-for-musician',
-        instrument: 'Drums',
+        instrumentId: drums.id,
       });
 
       await expect(

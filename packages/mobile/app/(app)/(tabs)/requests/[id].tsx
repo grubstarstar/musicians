@@ -149,7 +149,7 @@ function RequestDetailInner({ id }: { id: number }) {
         band={data.band}
         createdAt={createdAt}
         now={now}
-        heading={details.instrument}
+        heading={details.instrumentName ?? "Instrument"}
         extraRows={[
           details.style ? { label: "Style", value: details.style } : null,
           details.rehearsalCommitment
@@ -563,7 +563,7 @@ function RequestDetailInner({ id }: { id: number }) {
         band={null}
         createdAt={createdAt}
         now={now}
-        heading={`Musician looking for a band — ${details.instrument}`}
+        heading={`Musician looking for a band — ${details.instrumentName ?? "Instrument"}`}
         extraRows={[
           details.availability
             ? { label: "Availability", value: details.availability }

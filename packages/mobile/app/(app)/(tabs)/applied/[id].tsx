@@ -149,7 +149,7 @@ function RequestDetailInner({ id }: { id: number }) {
 
       <Text style={styles.sectionLabel}>Looking for</Text>
       <View style={styles.detailsCard}>
-        <Text style={styles.detailsHeading}>{details.instrument}</Text>
+        <Text style={styles.detailsHeading}>{details.instrumentName ?? "Instrument"}</Text>
         {details.style && <DetailRow label="Style" value={details.style} />}
         {details.rehearsalCommitment && (
           <DetailRow

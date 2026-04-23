@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import { and, eq, isNull, sql as sqlTag } from 'drizzle-orm';
 import { db, sql } from './db.js';
+import { instrumentSeed } from './instruments-seed.js';
 import {
   bandMembers,
   bands,
@@ -9,6 +10,7 @@ import {
   engineersRecordingStudios,
   gigs,
   gigSlots,
+  instruments,
   liveAudioGroups,
   promoterGroups,
   promoterGroupsVenues,
@@ -23,6 +25,27 @@ import {
 
 const defaultPassword = 'password123';
 const defaultHash = await bcrypt.hash(defaultPassword, 12);
+
+// --- MUS-68: instruments taxonomy ---
+//
+// Idempotent upsert-by-name: the seed list is the source of truth, so
+// every run ensures each canonical name exists exactly once. Category is
+// only set on insert — a later edit to an existing row's category should
+// be intentional (manual SQL) rather than drifting on every seed. Uses
+// `onConflictDoNothing` keyed on the unique name constraint.
+{
+  const existing = await db
+    .select({ id: instruments.id, name: instruments.name })
+    .from(instruments);
+  const existingNames = new Set(existing.map((r) => r.name));
+  const toInsert = instrumentSeed.filter((s) => !existingNames.has(s.name));
+  if (toInsert.length === 0) {
+    console.log(`Instruments taxonomy already has ${existing.length} row(s) — skipped seed.`);
+  } else {
+    await db.insert(instruments).values(toInsert).onConflictDoNothing();
+    console.log(`Seeded ${toInsert.length} instrument(s); taxonomy now has ${existing.length + toInsert.length} rows.`);
+  }
+}
 
 const seedUsers = [
   { username: 'admin', firstName: null, lastName: null },

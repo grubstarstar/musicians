@@ -139,7 +139,7 @@ function RequestCard({ request, now, refetchKey }: RequestCardProps) {
 
   const subtitle =
     request.details.kind === "musician-for-band"
-      ? request.details.instrument
+      ? request.details.instrumentName ?? "Instrument"
       : "Band needed for gig slot";
 
   return (

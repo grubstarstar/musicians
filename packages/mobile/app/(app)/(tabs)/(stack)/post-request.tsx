@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { InstrumentAutocomplete } from "../../../../src/components/InstrumentAutocomplete";
 import { QueryBoundary } from "../../../../src/components/QueryBoundary";
 import { queryClient, trpc } from "../../../../src/trpc";
 import { parsePostRequestParams } from "../../../../src/utils/parsePostRequestParams";
@@ -138,7 +139,12 @@ function PostRequestForm() {
         : null,
   );
   const [bandPickerOpen, setBandPickerOpen] = useState(false);
-  const [instrument, setInstrument] = useState("");
+  // MUS-68: instrument is now a taxonomy-backed autocomplete. Keep the
+  // visible text separately from the committed id so the user can still
+  // type freely (for search), with `instrumentId` only set once they pick
+  // a row.
+  const [instrumentText, setInstrumentText] = useState("");
+  const [instrumentId, setInstrumentId] = useState<number | null>(null);
   const [style, setStyle] = useState("");
   const [rehearsalCommitment, setRehearsalCommitment] = useState("");
 
@@ -178,8 +184,11 @@ function PostRequestForm() {
   const [venuePickerOpen, setVenuePickerOpen] = useState(false);
   const [proposedDate, setProposedDate] = useState("");
 
-  // band-for-musician form state. Free-text instrument per the ticket.
-  const [bandForMeInstrument, setBandForMeInstrument] = useState("");
+  // band-for-musician form state. MUS-68: instrument picked via the
+  // taxonomy autocomplete. See `instrumentText` / `instrumentId` comment
+  // above.
+  const [bandForMeInstrumentText, setBandForMeInstrumentText] = useState("");
+  const [bandForMeInstrumentId, setBandForMeInstrumentId] = useState<number | null>(null);
   const [availability, setAvailability] = useState("");
   const [demosUrl, setDemosUrl] = useState("");
 
@@ -225,7 +234,7 @@ function PostRequestForm() {
     !submitting &&
     createdRequestId === null &&
     (kind === "musician-for-band"
-      ? hasBands && selectedBandId !== null && instrument.trim().length > 0
+      ? hasBands && selectedBandId !== null && instrumentId !== null
       : kind === "band-for-gig-slot"
         ? hasGigs &&
           selectedGigId !== null &&
@@ -239,16 +248,20 @@ function PostRequestForm() {
                 selectedVenueId !== null &&
                 proposedDateValid
               : // band-for-musician
-                bandForMeInstrument.trim().length > 0);
+                bandForMeInstrumentId !== null);
 
   function handleSubmit() {
     if (!canSubmit) return;
     setError(null);
-    if (kind === "musician-for-band" && selectedBandId !== null) {
+    if (
+      kind === "musician-for-band" &&
+      selectedBandId !== null &&
+      instrumentId !== null
+    ) {
       createRequest.mutate(
         buildMusicianForBandInput({
           bandId: selectedBandId,
-          instrument,
+          instrumentId,
           style,
           rehearsalCommitment,
         }),
@@ -305,12 +318,12 @@ function PostRequestForm() {
     }
     if (kind === "band-for-musician") {
       const payload = buildBandForMusicianInput({
-        instrument: bandForMeInstrument,
+        instrumentId: bandForMeInstrumentId,
         availability,
         demosUrl,
       });
       if (!payload) {
-        setError("Enter an instrument to continue.");
+        setError("Pick an instrument to continue.");
         return;
       }
       createRequest.mutate(payload);
@@ -394,8 +407,18 @@ function PostRequestForm() {
           setSelectedBandId={setSelectedBandId}
           pickerOpen={bandPickerOpen}
           setPickerOpen={setBandPickerOpen}
-          instrument={instrument}
-          setInstrument={setInstrument}
+          instrumentText={instrumentText}
+          instrumentId={instrumentId}
+          onInstrumentTextChange={(t) => {
+            setInstrumentText(t);
+            // Typing after a selection invalidates the selection so the
+            // submit button doesn't stay green on stale state.
+            if (instrumentId !== null) setInstrumentId(null);
+          }}
+          onInstrumentSelect={(id, name) => {
+            setInstrumentId(id);
+            setInstrumentText(name);
+          }}
           style={style}
           setStyle={setStyle}
           rehearsalCommitment={rehearsalCommitment}
@@ -462,8 +485,16 @@ function PostRequestForm() {
         />
       ) : (
         <BandForMusicianForm
-          instrument={bandForMeInstrument}
-          setInstrument={setBandForMeInstrument}
+          instrumentText={bandForMeInstrumentText}
+          instrumentId={bandForMeInstrumentId}
+          onInstrumentTextChange={(t) => {
+            setBandForMeInstrumentText(t);
+            if (bandForMeInstrumentId !== null) setBandForMeInstrumentId(null);
+          }}
+          onInstrumentSelect={(id, name) => {
+            setBandForMeInstrumentId(id);
+            setBandForMeInstrumentText(name);
+          }}
           availability={availability}
           setAvailability={setAvailability}
           demosUrl={demosUrl}
@@ -623,7 +654,10 @@ type MatchCounterpart = {
   targetDate: string | null;
   gigDatetime: Date | string | null;
   gigVenueName: string | null;
-  instrument: string | null;
+  // MUS-68: tRPC counterpart shape carries the instrument id + denormalised
+  // name rather than a free-text string.
+  instrumentId: number | null;
+  instrumentName: string | null;
   proposedDate: string | null;
   venueName: string | null;
   possibleDates: string[] | null;
@@ -654,11 +688,11 @@ function matchRowLabel(c: MatchCounterpart): string {
   }
   if (c.kind === "musician-for-band") {
     const who = c.bandName ?? "A band";
-    const what = c.instrument ?? "a musician";
+    const what = c.instrumentName ?? "a musician";
     return `${who} — looking for a ${what}`;
   }
   // band-for-musician
-  const what = c.instrument ?? "an instrument";
+  const what = c.instrumentName ?? "an instrument";
   return `Musician plays ${what}`;
 }
 
@@ -690,8 +724,10 @@ function MusicianForBandForm(props: {
   setSelectedBandId: (id: number) => void;
   pickerOpen: boolean;
   setPickerOpen: (f: (v: boolean) => boolean) => void;
-  instrument: string;
-  setInstrument: (v: string) => void;
+  instrumentText: string;
+  instrumentId: number | null;
+  onInstrumentTextChange: (v: string) => void;
+  onInstrumentSelect: (id: number, name: string) => void;
   style: string;
   setStyle: (v: string) => void;
   rehearsalCommitment: string;
@@ -764,16 +800,14 @@ function MusicianForBandForm(props: {
       )}
 
       <Text style={styles.label}>Instrument</Text>
-      <TextInput
-        style={styles.input}
-        value={props.instrument}
-        onChangeText={props.setInstrument}
-        autoCapitalize="words"
-        autoCorrect={false}
-        placeholder="e.g. Bass"
-        placeholderTextColor="#555"
-        editable={!props.submitting}
-        returnKeyType="next"
+      <InstrumentAutocomplete
+        testID="post-request-instrument"
+        value={props.instrumentId}
+        text={props.instrumentText}
+        onChangeText={props.onInstrumentTextChange}
+        onSelect={props.onInstrumentSelect}
+        disabled={props.submitting}
+        placeholder="e.g. Bass Guitar"
       />
 
       <Text style={styles.label}>Style (optional)</Text>
@@ -1274,8 +1308,10 @@ function PromoterForVenueNightForm(props: {
 // --- Sub-form: band-for-musician -----------------------------------------
 
 function BandForMusicianForm(props: {
-  instrument: string;
-  setInstrument: (v: string) => void;
+  instrumentText: string;
+  instrumentId: number | null;
+  onInstrumentTextChange: (v: string) => void;
+  onInstrumentSelect: (id: number, name: string) => void;
   availability: string;
   setAvailability: (v: string) => void;
   demosUrl: string;
@@ -1285,16 +1321,14 @@ function BandForMusicianForm(props: {
   return (
     <View style={styles.form}>
       <Text style={styles.label}>Instrument</Text>
-      <TextInput
-        style={styles.input}
-        value={props.instrument}
-        onChangeText={props.setInstrument}
-        autoCapitalize="words"
-        autoCorrect={false}
+      <InstrumentAutocomplete
+        testID="post-request-instrument-band-for-me"
+        value={props.instrumentId}
+        text={props.instrumentText}
+        onChangeText={props.onInstrumentTextChange}
+        onSelect={props.onInstrumentSelect}
+        disabled={props.submitting}
         placeholder="e.g. Bass Guitar"
-        placeholderTextColor="#555"
-        editable={!props.submitting}
-        returnKeyType="next"
       />
 
       <Text style={styles.label}>Availability (optional)</Text>
