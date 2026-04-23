@@ -41,20 +41,28 @@ const ROLE_OPTIONS: RoleOption[] = [
 
 export default function RolePickerScreen() {
   const router = useRouter();
-  const { refreshUser } = useAuth();
+  const { setRoles } = useAuth();
   const [selected, setSelected] = useState<OnboardingRole | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const setRole = useMutation(
     trpc.onboarding.setRole.mutationOptions({
-      onSuccess: async (_data, variables) => {
+      onSuccess: (data, variables) => {
         // MUS-92: sync AuthContext with the server's now-populated `roles`
         // before navigating. Otherwise any subsequent navigation into the
         // (app) group (e.g. the create-entity deep link from the musician
         // step-2 placeholder) sees stale `user.roles = []` and the layout
         // guard at (app)/_layout.tsx bounces the user straight back here.
-        // Awaited so the navigation below sees the fresh state.
-        await refreshUser();
+        //
+        // The mutation itself returns the authoritative roles array, so we
+        // can update context synchronously without a /me round-trip. This
+        // also matters for React batching: a previous attempt awaited
+        // `refreshUser()` here, but the resulting `setUser` ran inside an
+        // async continuation and didn't always commit before the next
+        // navigation tick re-evaluated the (app) layout guard. Setting
+        // roles synchronously from the same handler that calls
+        // `router.replace` matches the existing login/register pattern.
+        setRoles(data.roles);
         // Route to the matching step-2 screen. `replace` so "back" doesn't
         // land on the picker after the role is already recorded — the wizard
         // advances; if the user needs to change their mind, the add-role

@@ -38,20 +38,36 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   /**
    * Re-fetches the current user from `/api/auth/me` and updates `user` in
-   * context. Call this after any server-side mutation that changes fields
-   * the auth gate cares about (currently `roles` — see (app)/_layout.tsx).
-   *
-   * Introduced for MUS-92: after `onboarding.setRole` succeeds, the in-memory
-   * `user.roles` is still stale `[]`, so the (app) layout guard would bounce
-   * the user back to the role-picker on the next navigation into the (app)
-   * group (e.g. the create-entity deep link). Calling `refreshUser()` before
-   * navigating out of the wizard syncs context with the server.
+   * context. General-purpose escape hatch retained for callers that don't
+   * have an authoritative roles array on hand. New code that already knows
+   * the post-mutation roles (e.g. from a tRPC mutation that returns them)
+   * should call `setRoles` instead — see the doc comment on `setRoles` for
+   * the MUS-92 motivation.
    *
    * No-op if there is no token (logged out / loading). Errors are swallowed
    * — a transient `/me` failure shouldn't block UX; the auth gate will
    * re-resolve on the next cold launch.
    */
   refreshUser: () => Promise<void>;
+  /**
+   * Synchronously replace the user's `roles` in context. Use this from the
+   * onSuccess handler of any mutation that already returns the authoritative
+   * roles array (e.g. `onboarding.setRole`).
+   *
+   * MUS-92: the role-picker previously called `await refreshUser()` here —
+   * a `/me` round-trip whose `setUser` ran inside an awaited async
+   * continuation. React batched that update such that the very next
+   * `router.replace` into a deep link could re-evaluate `(app)/_layout.tsx`
+   * before the new `roles` had committed, sending the user back to the
+   * picker. Switching to a synchronous `setRoles(data.roles)` from inside
+   * the same handler that triggers navigation matches the existing
+   * `login`/`register` pattern and lets React commit before the next
+   * navigation tick.
+   *
+   * No-op if there is no current user (shouldn't happen — caller is
+   * inside a protected mutation — but defensive against logout races).
+   */
+  setRoles: (roles: string[]) => void;
 }
 
 const AuthContextCtx = createContext<AuthContextValue | null>(null);
@@ -259,8 +275,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   // Re-fetch `/me` and replace the user in context. See the doc comment on
-  // `AuthContextValue.refreshUser` for the MUS-92 motivation. Reads `token`
-  // from state rather than capturing it in a closure-stale way — the callback
+  // `AuthContextValue.refreshUser` for the rationale. Reads `token` from
+  // state rather than capturing it in a closure-stale way — the callback
   // is recomputed when `token` changes.
   const refreshUser = useCallback(async () => {
     if (!token) return;
@@ -269,9 +285,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser({ username: me.username, roles: me.roles });
   }, [token]);
 
+  // Functional `setUser` so we don't capture a stale `user` in the closure;
+  // the callback identity stays stable across user changes (no deps), which
+  // means useMemo below doesn't churn the context value every time `roles`
+  // updates.
+  const setRoles = useCallback((roles: string[]) => {
+    setUser((prev) => (prev ? { ...prev, roles } : null));
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, token, login, register, logout, refreshUser }),
-    [status, user, token, login, register, logout, refreshUser],
+    () => ({
+      status,
+      user,
+      token,
+      login,
+      register,
+      logout,
+      refreshUser,
+      setRoles,
+    }),
+    [status, user, token, login, register, logout, refreshUser, setRoles],
   );
 
   return (
