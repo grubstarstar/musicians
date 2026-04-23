@@ -75,17 +75,12 @@ appId: com.musicians.app
 # (Maestro's recommended workaround).
 - tapOn: "USERNAME"
 
-# Enter the password. The field renders with secureTextEntry=true and
-# textContentType="newPassword", which is semantically correct for production
-# (enables the iOS Password Manager save-password prompt on signup). A
-# side-effect on the sim is iOS presenting an "Automatic Strong Password"
-# cover view over the field on first focus — it swallows the next inputText,
-# the TextInput stays empty, and signup-submit never enables. eraseText
-# dismisses the cover view by clearing the suggested text, and Maestro can
-# then type into the real field.
+# Enter the password. The field uses textContentType="password"
+# (secureTextEntry=true). That still integrates with iOS Password Manager's
+# save-after-submit prompt — the reason we avoid "newPassword" is its
+# "Automatic Strong Password" cover view swallows inputText on the sim.
 - tapOn:
     id: "signup-password"
-- eraseText: 50
 - inputText: "abcd1234"
 
 # Dismiss the keyboard again before tapping submit.

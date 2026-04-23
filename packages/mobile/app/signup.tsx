@@ -96,7 +96,15 @@ export default function SignupScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="password-new"
-                textContentType="newPassword"
+                // textContentType="password" (not "newPassword") — iOS's
+                // "Automatic Strong Password" cover view renders over the
+                // field on focus when newPassword is set, blocking both
+                // manual typing on the sim (Maestro inputText is absorbed
+                // into the suggestion, not the TextInput) and users who
+                // want to pick their own password. The "password" type
+                // still integrates with Password Manager's save-after-submit
+                // prompt, which is the UX that matters for a signup flow.
+                textContentType="password"
                 placeholder={`at least ${MIN_PASSWORD_LENGTH} characters`}
                 placeholderTextColor="#555"
                 editable={!submitting}
