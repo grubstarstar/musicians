@@ -23,18 +23,22 @@ appId: com.musicians.app
 # the "newbie" account created by flow 01 with no musician profile yet.
 
 - launchApp
-# Cold bundle fetch can take 20-40s on a sandboxed simulator. Wait explicitly
-# before interacting (the login screen takes priority over the profile menu).
-- extendedWaitUntil:
-    visible: "Sign in to continue"
-    timeout: 60000
 
-# If a previous run left a user signed in, log out first so we always start
-# from the login screen.
+# If a previous run left a user signed in (e.g. flow 01 ends authenticated),
+# log out first so we always start from the login screen.
+# The conditional when: visible: polling has its own implicit wait, so a slow
+# bundle load won't wedge here — the app surfaces either the Home screen
+# (which has "Open profile menu") or the login screen.
 - runFlow:
     when:
       visible: "Open profile menu"
     file: ../../helpers/logout.yaml
+
+# Now we expect the login screen. Cold bundle fetch can take 20-40s on a
+# sandboxed simulator; wait explicitly before interacting.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
 
 # Sign in as "newbie" (the account created by flow 01). No dedicated helper
 # for newbie — inline the steps. The fixture password matches what flow 01
