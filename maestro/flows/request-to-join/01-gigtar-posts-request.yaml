@@ -76,19 +76,20 @@ appId: com.musicians.app
 - tapOn:
     id: "instrument-picker-search"
 - inputText: "Bass Guitar"
-# Wait for the "Bass Guitar" row to appear in the FlatList.
-# The search is debounced 200ms and backed by a tRPC roundtrip + React render,
-# so allow 4000ms for cold-simulator runs (200ms debounce + network + render).
-# extendedWaitUntil on visible text is sufficient here — the row renders the
-# canonical instrument name and is unique on this screen.
+# Wait for the "Bass Guitar" row to appear in the FlatList. Match on the
+# row's accessibilityLabel ("Select <name>") rather than the visible text,
+# because "Bass Guitar" is also present in the search TextInput we just typed
+# into — a plain visible-text selector would match the input first and tap
+# that instead of the row (leaving the modal open, submit stays disabled).
+# The accessibilityLabel is unique to the Pressable suggestion row.
+# 200ms debounce + tRPC roundtrip + React render, so allow 4000ms for cold sim.
 - extendedWaitUntil:
-    visible: "Bass Guitar"
+    visible: "Select Bass Guitar"
     timeout: 4000
-# Tap the row by visible text to commit the selection.
-# The modal auto-closes after a row tap and the outer Pressable now shows
-# the selected instrument name. Never use testID "instrument-picker-option-<id>"
-# — the numeric id suffix is not stable across seed runs.
-- tapOn: "Bass Guitar"
+# Tap the row by accessibilityLabel to commit the selection and auto-close
+# the modal. Never use testID "instrument-picker-option-<id>" — the numeric
+# id suffix is not stable across seed runs.
+- tapOn: "Select Bass Guitar"
 
 # After the modal closes the outer Pressable field displays the chosen name.
 # Assert it is visible on the Post Request form to confirm selection committed.

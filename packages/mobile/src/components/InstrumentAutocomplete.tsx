@@ -250,6 +250,7 @@ function InstrumentPickerModal({
           autoCapitalize="words"
           autoCorrect={false}
           returnKeyType="search"
+          contextMenuHidden
         />
 
         <FlatList
