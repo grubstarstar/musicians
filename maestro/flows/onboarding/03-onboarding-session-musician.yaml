@@ -116,17 +116,17 @@ appId: com.musicians.app
 - tapOn:
     id: "session-musician-experience-years"
 - inputText: "5"
-- tapOn: "EXPERIENCE"
+- tapOn: "YEARS OF EXPERIENCE (OPTIONAL)"
 
 - tapOn:
     id: "session-musician-location"
 - inputText: "Sydney"
-- tapOn: "LOCATION"
+- tapOn: "LOCATION (OPTIONAL)"
 
 - tapOn:
     id: "session-musician-bio"
 - inputText: "Session guitarist available for studio and live work."
-- tapOn: "BIO"
+- tapOn: "BIO (OPTIONAL)"
 
 # The available-for-session-work toggle defaults ON in new/first-entry mode —
 # do not tap it; the happy-path leaves it as-is.
