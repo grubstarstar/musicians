@@ -22,6 +22,13 @@ export default function RootLayout() {
                 animationTypeForReplace: "pop",
               }}
             />
+            <Stack.Screen
+              name="signup"
+              options={{
+                gestureEnabled: false,
+                animationTypeForReplace: "pop",
+              }}
+            />
           </Stack>
         </AuthProvider>
       </GestureHandlerRootView>

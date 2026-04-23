@@ -29,12 +29,19 @@ interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContextCtx = createContext<AuthContextValue | null>(null);
 
 interface LoginResponse {
+  username?: string;
+  token?: string;
+  error?: string;
+}
+
+interface RegisterResponse {
   username?: string;
   token?: string;
   error?: string;
@@ -66,6 +73,31 @@ async function requestLogin(
   }
   if (!body.token || !body.username) {
     throw new Error("Login response was missing token or username");
+  }
+  return { token: body.token, username: body.username };
+}
+
+/**
+ * Creates a new account, then behaves like login — server returns the same
+ * `{ token, username }` shape on success. Surfaces server errors (duplicate
+ * username, validation) as plain `Error`s for the signup form to render.
+ */
+async function requestRegister(
+  apiUrl: string,
+  username: string,
+  password: string,
+): Promise<{ token: string; username: string }> {
+  const res = await fetch(`${apiUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  const body = (await res.json().catch(() => ({}))) as RegisterResponse;
+  if (!res.ok) {
+    throw new Error(body.error ?? "Signup failed");
+  }
+  if (!body.token || !body.username) {
+    throw new Error("Signup response was missing token or username");
   }
   return { token: body.token, username: body.username };
 }
@@ -169,9 +201,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Signup and login both end with "we now have a token and a username";
+  // persist and flip state the same way so navigation to the post-auth group
+  // happens via the `status` -> `authenticated` transition exactly like login.
+  const register = useCallback(
+    async (username: string, password: string) => {
+      const result = await requestRegister(API_URL, username, password);
+      await storeToken(result.token);
+      setAuthToken(result.token);
+      setTokenState(result.token);
+      setUser({ username: result.username });
+      setStatus("authenticated");
+    },
+    [],
+  );
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, token, login, logout }),
-    [status, user, token, login, logout],
+    () => ({ status, user, token, login, register, logout }),
+    [status, user, token, login, register, logout],
   );
 
   return (

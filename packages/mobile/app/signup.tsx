@@ -14,32 +14,42 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../src/auth/AuthContext";
 
-export default function LoginScreen() {
-  const { status, login } = useAuth();
+// Server enforces this too. Keeping the constant in sync with
+// `packages/server/src/routes/authRoutes.ts` — if this moves, both sides need
+// to update in the same commit.
+const MIN_PASSWORD_LENGTH = 8;
+
+export default function SignupScreen() {
+  const { status, register } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // If the user is already authenticated (e.g. deep-linked back to /login
-  // while signed in), bounce to the app shell.
+  // Same bounce-back as login: if a user deep-links here while already signed
+  // in, flip them straight into the app shell.
   if (status === "authenticated") {
     return <Redirect href="/" />;
   }
 
-  const canSubmit = username.length > 0 && password.length > 0 && !submitting;
+  const canSubmit =
+    username.trim().length > 0 &&
+    password.length >= MIN_PASSWORD_LENGTH &&
+    !submitting;
 
   async function handleSubmit() {
     if (!canSubmit) return;
     setError(null);
     setSubmitting(true);
     try {
-      await login(username.trim(), password);
+      // Trim on submit — server also trims, but mirroring here means the
+      // canSubmit check stays honest against the value the server will see.
+      await register(username.trim(), password);
       // AuthContext flips status; routes will re-render and the (app) group
       // picks up the authed state. No explicit navigation needed.
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Signup failed");
     } finally {
       setSubmitting(false);
     }
@@ -55,22 +65,19 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.inner}>
-          <Text style={styles.title}>Musicians</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
+          <Text style={styles.title}>Create your account</Text>
+          <Text style={styles.subtitle}>Pick a username and a password</Text>
 
           <View style={styles.form}>
             <Text style={styles.label}>Username</Text>
             <TextInput
-              // testID is required for the Maestro e2e flows (MUS-71). Visible
-              // text is unreliable for inputs where the placeholder doesn't
-              // match the value the user is typing.
-              testID="login-username"
+              testID="signup-username"
               style={styles.input}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete="username"
+              autoComplete="username-new"
               textContentType="username"
               placeholder="username"
               placeholderTextColor="#555"
@@ -81,16 +88,16 @@ export default function LoginScreen() {
             <Text style={styles.label}>Password</Text>
             <View style={styles.passwordRow}>
               <TextInput
-                testID="login-password"
+                testID="signup-password"
                 style={[styles.input, styles.passwordInput]}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoComplete="password"
-                textContentType="password"
-                placeholder="password"
+                autoComplete="password-new"
+                textContentType="newPassword"
+                placeholder={`at least ${MIN_PASSWORD_LENGTH} characters`}
                 placeholderTextColor="#555"
                 editable={!submitting}
                 returnKeyType="go"
@@ -120,7 +127,7 @@ export default function LoginScreen() {
             )}
 
             <Pressable
-              testID="login-submit"
+              testID="signup-submit"
               onPress={handleSubmit}
               disabled={!canSubmit}
               style={({ pressed }) => [
@@ -134,25 +141,19 @@ export default function LoginScreen() {
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>Sign in</Text>
+                <Text style={styles.buttonText}>Create account</Text>
               )}
             </Pressable>
 
-            {/* Signup link (MUS-99). Rendered as a Link+Pressable so Maestro
-                can target the testID reliably — a bare <Link> wraps an <a> in
-                some environments and testIDs don't always land on the
-                underlying pressable. */}
-            <Link href="/signup" asChild>
+            <Link href="/login" asChild>
               <Pressable
-                testID="login-to-signup-link"
+                testID="signup-to-login-link"
                 style={styles.altLink}
                 accessibilityRole="link"
               >
                 <Text style={styles.altLinkText}>
-                  New here?{" "}
-                  <Text style={styles.altLinkTextStrong}>
-                    Create an account
-                  </Text>
+                  Already have an account?{" "}
+                  <Text style={styles.altLinkTextStrong}>Sign in</Text>
                 </Text>
               </Pressable>
             </Link>
@@ -173,7 +174,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#fff",
-    fontSize: 34,
+    fontSize: 30,
     fontWeight: "700",
   },
   subtitle: {
