@@ -29,13 +29,29 @@ import {
  *       `Test Hall` — so `promoterGroups.listMine` returns one group with one
  *       venue for `promoter1`.
  *
+ *   - `onboarding` (MUS-91):
+ *       user `newbie` (`abcd1234`) with `roles: []`
+ *       Represents a freshly-signed-up user who has not yet completed the
+ *       onboarding wizard. The auth guard in (app)/_layout.tsx redirects
+ *       `roles.length === 0` users to /onboarding/role-picker — flow 04
+ *       exercises that path by logging in as newbie after a DB reset.
+ *
  * Designed to be called from inside the `/test/reset` server endpoint after
  * truncation so each Maestro run starts from the same state. No I/O cleanup
  * here — the caller manages the DB connection lifetime.
  */
 export async function seedE2E(): Promise<void> {
   const passwordHash = await bcrypt.hash('password123', 12);
+  // newbie uses a different password (abcd1234) to match the onboarding journey
+  // flows (MUS-91) which log in with those credentials after signup/reset.
+  const newbiePasswordHash = await bcrypt.hash('abcd1234', 12);
 
+  // users.roles (MUS-86) is the snapshot MUS-89's (app)/_layout.tsx guard
+  // reads to decide whether to route a cold-launched authenticated user to
+  // the onboarding wizard or to Home. All seedE2E users are post-onboarding
+  // fixtures, so they carry the appropriate role already — without this,
+  // every Maestro flow that logs in as a seeded user gets bounced to the
+  // role-picker on cold launch.
   const [gigtar] = await db
     .insert(users)
     .values({
@@ -43,6 +59,7 @@ export async function seedE2E(): Promise<void> {
       password_hash: passwordHash,
       firstName: 'Gigtar',
       lastName: null,
+      roles: ['musician'],
     })
     .returning({ id: users.id });
 
@@ -53,6 +70,7 @@ export async function seedE2E(): Promise<void> {
       password_hash: passwordHash,
       firstName: 'Sesh',
       lastName: null,
+      roles: ['musician'],
     })
     .returning({ id: users.id });
 
@@ -102,6 +120,7 @@ export async function seedE2E(): Promise<void> {
       password_hash: passwordHash,
       firstName: null,
       lastName: null,
+      roles: ['promoter'],
     })
     .returning({ id: users.id });
 
@@ -128,5 +147,22 @@ export async function seedE2E(): Promise<void> {
   await db.insert(promoterGroupsVenues).values({
     promoter_group_id: testPromotions.id,
     venue_id: testHall.id,
+  });
+
+  // --- onboarding fixture (MUS-91) ---
+  //
+  // Flow 04 of the onboarding journey logs in as a user who has completed
+  // signup but has not yet selected a role (roles=[]). The auth guard in
+  // (app)/_layout.tsx redirects such users to /onboarding/role-picker.
+  //
+  // Password is "abcd1234" (distinct from password123) matching the
+  // credentials used by the onboarding journey flows after a DB reset.
+  // roles=[] is the sentinel the auth guard checks — do not add a role here.
+  await db.insert(users).values({
+    username: 'newbie',
+    password_hash: newbiePasswordHash,
+    firstName: null,
+    lastName: null,
+    roles: [],
   });
 }
