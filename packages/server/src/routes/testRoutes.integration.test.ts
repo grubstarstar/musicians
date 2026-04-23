@@ -7,7 +7,8 @@
 //   - the test DB ends up with the seedE2E fixture (MUS-97 added the
 //     promoter-home slice: `promoter1`, promoter group "Test Promotions",
 //     venue "Test Hall", plus the request-to-join slice: `gigtar`, `sesh`,
-//     band "The Testers").
+//     band "The Testers"; MUS-91 added the onboarding slice: `newbie`
+//     with password "abcd1234" and roles=[]).
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const TEST_DB_URL =
@@ -95,12 +96,13 @@ describe.skipIf(skip)('POST /test/reset (integration)', () => {
 
     expect(allUsers.map((u) => u.username).sort()).toEqual([
       'gigtar',
+      'newbie',
       'promoter1',
       'sesh',
     ]);
     expect(allBands.map((b) => b.name)).toEqual(['The Testers']);
     // Only gigtar is in a band (sesh is intentionally bandless; promoter1 is
-    // a promoter and also not in any band).
+    // a promoter and also not in any band; newbie has no role yet).
     expect(memberships).toHaveLength(1);
     expect(allPromoterGroups.map((g) => g.name)).toEqual(['Test Promotions']);
     expect(allVenues.map((v) => v.name)).toEqual(['Test Hall']);
@@ -124,6 +126,7 @@ describe.skipIf(skip)('POST /test/reset (integration)', () => {
     const allUsers = await db.select({ username: users.username }).from(users);
     expect(allUsers.map((u) => u.username).sort()).toEqual([
       'gigtar',
+      'newbie',
       'promoter1',
       'sesh',
     ]);
