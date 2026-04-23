@@ -1,8 +1,8 @@
 appId: com.musicians.app
 ---
 # Flow 02 of the onboarding e2e journey (MUS-89, extended in MUS-92).
-# Entry state: flow 01 (01-signup.yaml) has run — "newbie" is signed in and
-# the app is sitting on the role-picker screen ("What brings you here?").
+# Entry state: flow 01 (01-signup.yaml) has run — "newbie" account exists in
+# the test DB with password "abcd1234" and roles=[].
 # This flow exercises the musician path through the role-picker:
 #   - Assert the role-picker screen is visible.
 #   - Verify Next is disabled before a role is selected.
@@ -17,13 +17,51 @@ appId: com.musicians.app
 #               dismiss CTA → CTA gone.
 #   Solo-mode:  name input → submit → band profile without "Add members" CTA.
 
-# Re-launch the app so we start from a stable foreground state.
-# No clearState — that wipes the dev-client's saved server URL.
-- launchApp
+# Re-launch the app with clearKeychain so any stale SecureStore token from a
+# previous run (e.g. sesh's token from flow 03) is wiped before the auth
+# context fires. Bare launchApp leaves the keychain intact, which is fragile:
+# a stale or invalid token causes fetchMe to return null and the app lands on
+# the login screen instead of the role-picker. clearKeychain: true is the
+# pattern established in flow 03 (commit 0dcb9ef / 4c927e0) — it does NOT
+# wipe the dev-client's saved server URL (that lives in NSUserDefaults, not
+# the keychain), so the Metro bundler URL survives.
+- launchApp:
+    clearKeychain: true
 
-# Wait for the role-picker screen. After signup, Expo Router replaces the route
-# to /onboarding/role-picker. The title "What brings you here?" is the most
-# stable text anchor on this screen.
+# Allow the app's animation/initialization phase to complete before querying
+# the accessibility tree. Without this, XCTest can return kAXErrorInvalidUIElement
+# (HTTP 500) and crash the subsequent conditional-logout check (same issue
+# diagnosed in commit ec53b7f for flow 03).
+- waitForAnimationToEnd
+
+# Belt-and-braces: if some other state survives (e.g. a previous run that did
+# not use keychain storage), log out before logging in as newbie.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# clearKeychain wiped the keychain, so the app is now showing the login screen.
+# Wait explicitly before interacting — cold bundle fetch can take 20-40s.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# Log in as newbie. Flow 01 created this account with password "abcd1234".
+# After login, newbie has roles=[] so the (app)/_layout.tsx guard redirects
+# to /onboarding/role-picker rather than Home.
+- tapOn:
+    id: "login-username"
+- inputText: "newbie"
+- tapOn:
+    id: "login-password"
+- inputText: "abcd1234"
+- tapOn:
+    id: "login-submit"
+
+# Wait for the role-picker screen. The auth guard in (app)/_layout.tsx checks
+# roles.length === 0 and issues Redirect href="/onboarding/role-picker".
+# The title "What brings you here?" is the most stable text anchor on this screen.
 - extendedWaitUntil:
     visible: "What brings you here?"
     timeout: 30000
