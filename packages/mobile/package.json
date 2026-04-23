@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "e2e:start": "expo start --dev-client --ios --port 8082",
+    "e2e:start": "expo start --dev-client --port 8082",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

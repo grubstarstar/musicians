@@ -39,6 +39,17 @@ The script **auto-manages Metro and the e2e server** — it kills whatever is on
 
 If a prereq is missing, **do NOT run `pnpm e2e:build-app`** — that kicks off a multi-minute EAS cloud build and is out of scope for a single ticket's qa-test run. Post a Jira comment naming the missing prereq, do NOT transition, and report "skipped" in your final message to the orchestrator.
 
+## Known prereq signatures (narrow auto-retry list)
+
+The script's autostart starts `pnpm e2e:mobile` (Metro on :8082) and `pnpm e2e:server` (Hono on :3002) and considers each ready when its port is bound. That check has one historical blind spot: Metro can bind :8082 and then *die within a few seconds* from a post-bind error, leaving a dead bundler that the script fails to notice. In that case the sim ends up on the Expo dev-launcher ("No development servers found") and flow 01 times out on its first `assertVisible`.
+
+If stdout/stderr matches **both** of these signatures, retry once silently by re-running `bash scripts/e2e-run.sh maestro/flows/<journey>`; then proceed with whatever that second run reports. If the second run hits the same pair, **stop** and report as prereq failure.
+
+1. `CommandError: Device MaestroTest has no app to handle the URI: exp+musicians://…` in the Metro log (`$TMPDIR/e2e-run-metro.log`). This was historically caused by `expo start --ios` auto-deep-linking before the freshly-installed dev-client was URI-ready. The `--ios` flag has since been removed from `packages/mobile/package.json`'s `e2e:start`, so this signature should be rare. If you see it, record the exact tail in your report — it means the fix regressed.
+2. The Maestro run itself aborts inside the first 60s of flow 01 on an assertion for a login-screen text (`"Sign in to continue"`, `"What brings you here?"`, etc.), with a failure screenshot showing the Expo dev launcher rather than the app.
+
+This is the **only** signature-list retry allowed. Do not generalise. Any other failure — including prereqs that don't match both of the above — is reported on the first run and does not get a second pass. The "run once, report, exit" rule below stands for everything not on this list.
+
 # Interpreting the result
 
 ## Exit 0 — pass
@@ -100,7 +111,7 @@ Do **not** transition. End with "skipped" in your final report.
 - **Read-only on app source.** You do NOT Edit or Write under `packages/**/src/`, `packages/mobile/app/`, `maestro/flows/**`, `scripts/**`, or `.claude/**`. If the flow file has a typo or a bad selector, post a "flow bug" failure comment — do not fix it yourself.
 - **Do not run builds.** No `pnpm build`, no `pnpm e2e:build-app`, no EAS cloud calls. You consume cached artefacts.
 - **Do not parallelise sims.** The `MaestroTest` simulator is a shared singleton; one qa-test run at a time is enforced by the orchestrator.
-- **Run once, report, exit.** No retry loop. Flaky flows are a flow bug — category it and let qa-automate fix selectors.
+- **Run once, report, exit.** No retry loop. Flaky flows are a flow bug — category it and let qa-automate fix selectors. The one narrow exception is the signature-matched retry under "Known prereq signatures" above.
 - **Do not commit.** You write nothing to the git index. Your worktree is discarded when you finish.
 
 # Workflow summary
