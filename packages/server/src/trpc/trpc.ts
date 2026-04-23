@@ -12,3 +12,8 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   }
   return next({ ctx: { user: ctx.user } });
 });
+
+// Exposed so integration tests can drive the router with a synthetic
+// `Context` object instead of going through HTTP + JWT. Using the factory
+// keeps the caller bound to this single `t` instance.
+export const createCallerFactory = t.createCallerFactory;

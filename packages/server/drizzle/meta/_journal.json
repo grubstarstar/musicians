@@ -64,6 +64,13 @@
       "when": 1776700000000,
       "tag": "0008_mus58_request_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777000000000,
+      "tag": "0009_musician_profiles",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   jsonb,
   pgEnum,
@@ -419,6 +420,36 @@ export type ExpressionOfInterest = typeof expressionsOfInterest.$inferSelect;
 export type RequestKind = (typeof requestKindEnum.enumValues)[number];
 export type RequestStatus = (typeof requestStatusEnum.enumValues)[number];
 export type EoiState = (typeof eoiStateEnum.enumValues)[number];
+
+// --- Musician profiles (MUS-85) ---
+//
+// 1:1 with `users` — the PK is `user_id`, and the FK cascades on user delete
+// so a profile never outlives its user. This table stores the per-user
+// musician-facing data that is independent of any Act/Band membership:
+//   - a solo artist has a profile and a 1-member act
+//   - a band member has a profile and `band_members` rows
+//   - a session musician (MUS-84 "session musician" branch) has only a
+//     profile — no act membership
+//
+// Every field except `available_for_session_work` is nullable so a freshly
+// onboarded musician can upsert progressively. `instruments` is an
+// unconstrained text[]; MUS-85 explicitly leaves validation against a
+// canonical instrument list out of scope (handled later). `location` is
+// free-form text; geocoding is out of scope for this slice.
+export const musicianProfiles = pgTable('musician_profiles', {
+  user_id: integer('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  instruments: text('instruments').array().notNull().default([]),
+  experience_years: integer('experience_years'),
+  location: text('location'),
+  bio: text('bio'),
+  available_for_session_work: boolean('available_for_session_work').notNull().default(false),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type MusicianProfile = typeof musicianProfiles.$inferSelect;
 
 export interface BandWithMembers extends Band {
   members: Pick<User, 'id' | 'username' | 'firstName' | 'lastName'>[];

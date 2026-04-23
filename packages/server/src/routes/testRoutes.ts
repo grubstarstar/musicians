@@ -37,6 +37,7 @@ const TRUNCATE_TABLES = [
   'venues',
   'promoter_groups',
   'user_roles',
+  'musician_profiles',
   'band_tracks',
   'band_members',
   'bands',
