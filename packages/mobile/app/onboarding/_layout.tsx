@@ -27,11 +27,21 @@ export default function OnboardingLayout() {
       <Stack.Screen name="musician" />
       <Stack.Screen name="promoter" />
       {/*
+<<<<<<< HEAD
         MUS-91: placeholder destination for the "Join existing promoter
         group" option on promoter step-2. Sibling ticket replaces it with
         the real picker / request form.
       */}
       <Stack.Screen name="promoter-join" />
+=======
+        MUS-90: placeholder for the "Join existing band" sub-flow off the
+        musician step-2 screen. The real picker / join-request form lands in
+        a sibling ticket; the route path is registered here so step-2 can
+        push to it. Sits alongside the other wizard steps so the no-drawer
+        chrome is consistent.
+      */}
+      <Stack.Screen name="join-band" />
+>>>>>>> 930ac74 (MUS-90: musician step-2 screen with four-option router)
     </Stack>
   );
 }
