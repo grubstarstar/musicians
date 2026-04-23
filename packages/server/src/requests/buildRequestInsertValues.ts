@@ -57,6 +57,13 @@ export type RequestCreateInput =
       instrument: string;
       availability?: string;
       demosUrl?: string;
+    }
+  // `band_join` (MUS-87): requester (source) asks to join a specific band.
+  // Anchored to the band so `listOpenRequests` / `listMyRequests` can render
+  // the band without a second lookup. Slot_count = 1 — one accept closes it.
+  | {
+      kind: 'band_join';
+      bandId: number;
     };
 
 export interface RequestInsertValues {
@@ -181,19 +188,39 @@ export function buildRequestInsertValues(
     };
   }
 
-  // band-for-musician (MUS-58): musician is source, no anchor object. Exactly
-  // one accept per request — the musician joins the band the EoI creator
-  // specifies. Slot_count = 1.
+  if (input.kind === 'band-for-musician') {
+    // band-for-musician (MUS-58): musician is source, no anchor object. Exactly
+    // one accept per request — the musician joins the band the EoI creator
+    // specifies. Slot_count = 1.
+    const details: RequestDetails = {
+      kind: 'band-for-musician',
+      instrument: input.instrument,
+      ...(input.availability !== undefined ? { availability: input.availability } : {}),
+      ...(input.demosUrl !== undefined ? { demosUrl: input.demosUrl } : {}),
+    };
+    return {
+      kind: 'band-for-musician',
+      source_user_id: userId,
+      anchor_band_id: null,
+      anchor_gig_id: null,
+      details,
+      slot_count: 1,
+      slots_filled: 0,
+      status: 'open',
+    };
+  }
+
+  // band_join (MUS-87): requester is the source, the target band is the
+  // anchor. Slot_count = 1 — one accept (by any existing band member) closes
+  // the request and inserts the requester into `band_members`.
   const details: RequestDetails = {
-    kind: 'band-for-musician',
-    instrument: input.instrument,
-    ...(input.availability !== undefined ? { availability: input.availability } : {}),
-    ...(input.demosUrl !== undefined ? { demosUrl: input.demosUrl } : {}),
+    kind: 'band_join',
+    bandId: input.bandId,
   };
   return {
-    kind: 'band-for-musician',
+    kind: 'band_join',
     source_user_id: userId,
-    anchor_band_id: null,
+    anchor_band_id: input.bandId,
     anchor_gig_id: null,
     details,
     slot_count: 1,

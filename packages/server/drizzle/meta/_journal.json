@@ -71,6 +71,13 @@
       "when": 1777000000000,
       "tag": "0009_musician_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777050000000,
+      "tag": "0010_band_join_request_kind",
+      "breakpoints": true
     }
   ]
 }
