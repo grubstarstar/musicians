@@ -29,6 +29,20 @@ export default function RootLayout() {
                 animationTypeForReplace: "pop",
               }}
             />
+            {/*
+              MUS-89: onboarding wizard (role picker + per-role step-2 screens).
+              Lives outside `(app)` because it runs before the drawer-mounted
+              shell is meaningful (no active role = nothing to render on
+              Home). gestureEnabled false matches the login/signup auth gates
+              — the user should move forward via explicit Next, not swipe-back.
+            */}
+            <Stack.Screen
+              name="onboarding"
+              options={{
+                gestureEnabled: false,
+                animationTypeForReplace: "pop",
+              }}
+            />
           </Stack>
         </AuthProvider>
       </GestureHandlerRootView>

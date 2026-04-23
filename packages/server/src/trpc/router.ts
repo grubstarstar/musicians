@@ -14,6 +14,7 @@ import {
   getMusicianProfile,
   upsertMusicianProfile,
 } from '../musicianProfiles/queries.js';
+import { addUserRole, ONBOARDING_ROLES } from '../onboarding/queries.js';
 import { getPromoterGroupDetail } from '../promoterGroups/getPromoterGroupDetail.js';
 import {
   isMemberOfPromoterGroup,
@@ -113,6 +114,22 @@ export const appRouter = router({
           });
         }
         return detail;
+      }),
+  }),
+  // Onboarding (MUS-89). Thin surface for the first-run wizard — currently
+  // just the role-picker step. `setRole` idempotently appends a role to
+  // `users.roles` (MUS-86 column) and returns the resulting array so the
+  // client can update local state without a follow-up fetch. Kept as a
+  // `z.enum` input because every allowed role has the same shape today; if a
+  // future role needs structured payload (e.g. `engineer` with a discipline
+  // sub-type), swap to a discriminated union on `role` to match the
+  // `requests.create` / `expressionsOfInterest.create` convention.
+  onboarding: router({
+    setRole: protectedProcedure
+      .input(z.object({ role: z.enum(ONBOARDING_ROLES) }))
+      .mutation(({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        return addUserRole(userId, input.role);
       }),
   }),
   // Musician profiles (MUS-85). Per-user musician data kept in `musician_profiles`

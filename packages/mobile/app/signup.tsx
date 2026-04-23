@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link, Redirect } from "expo-router";
+import { Link, Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -21,6 +21,7 @@ const MIN_PASSWORD_LENGTH = 8;
 
 export default function SignupScreen() {
   const { status, register } = useAuth();
+  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -46,8 +47,13 @@ export default function SignupScreen() {
       // Trim on submit — server also trims, but mirroring here means the
       // canSubmit check stays honest against the value the server will see.
       await register(username.trim(), password);
-      // AuthContext flips status; routes will re-render and the (app) group
-      // picks up the authed state. No explicit navigation needed.
+      // MUS-89: send freshly registered users straight into the onboarding
+      // wizard rather than letting the (app) group pick up the authed state.
+      // The wizard picks a role (and writes it to users.roles); once the
+      // user lands on home they'll have an active context to render. The
+      // replace is important — we don't want the signup screen in the back
+      // stack while they're partway through onboarding.
+      router.replace("/onboarding/role-picker");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
     } finally {
