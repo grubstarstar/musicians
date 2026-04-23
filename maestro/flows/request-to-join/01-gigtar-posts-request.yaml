@@ -60,10 +60,12 @@ appId: com.musicians.app
 # Wait for the autocomplete debounce (200ms) to fire and the suggestions
 # dropdown to render. `extendedWaitUntil` polls for visibility rather than
 # sleeping a fixed clock duration — more robust across slow CI sims.
+# Timeout raised to 4000ms (MUS-68 fix-up): 1000ms was too tight on cold
+# simulator runs (200ms debounce + tRPC roundtrip + React render).
 - extendedWaitUntil:
     visible:
       id: "instrument-autocomplete-suggestions"
-    timeout: 1000
+    timeout: 4000
 
 # The suggestion dropdown is now visible. Tap the "Bass Guitar" row by
 # visible text to commit the instrumentId.
