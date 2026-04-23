@@ -98,9 +98,11 @@ appId: com.musicians.app
 # the exact userId is unknown at flow-write time; the text is unique on this screen.
 - assertVisible: "promoter1"
 
-# Back-navigate to PromoterHome via the native iOS back gesture. The detail screen
-# lives inside the home-tab stack so the native back action works.
-- back
+# Back-navigate to PromoterHome. The detail screen's back control is a custom
+# Pressable (chevron + accessibilityLabel="Go back"), not the iOS nav-bar
+# back button — Maestro's `- back` only targets the latter, so tap the
+# Pressable by its a11y label instead.
+- tapOn: "Go back"
 
 # Assert PromoterHome is visible again. TanStack Query keeps the listMine result
 # warm from cache so there should be no loading flash — the assertion fires
