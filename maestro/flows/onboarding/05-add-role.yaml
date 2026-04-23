@@ -1,0 +1,220 @@
+appId: com.musicians.app
+---
+# Flow 05 of the onboarding e2e journey (MUS-95).
+# Entry state: the test DB is reset at the start of this flow, so earlier flows
+# do not need to have run. promoter1 is a fixture user seeded in seedE2E.ts with
+# roles=['promoter'], password123, and a linked Test Promotions promoter group.
+#
+# What this flow exercises:
+#   Happy path — promoter1 adds the musician role from settings:
+#     - Reset DB, launch with clearKeychain, log in as promoter1.
+#     - Open app drawer → tap Settings row (drawer-settings testID).
+#     - Tap "Add role" on the settings screen (settings-add-role testID).
+#     - Assert add-role-option-musician is visible and add-role-option-promoter
+#       is NOT visible (promoter1 already has the promoter role).
+#     - Tap add-role-option-musician — fires users.addRole and navigates to
+#       /onboarding/musician (onboarding-musician-step2).
+#     - Tap "Session musician" tile, then Next → /onboarding/session-musician.
+#     - Add one instrument, scroll, submit → lands on Home ("Hello promoter1").
+#     - Re-open drawer → Settings → Add role: now zero-state is visible because
+#       promoter1 has both roles (add-role-zero-state testID).
+#
+#   Cancellation path — backing out of the add-role picker leaves roles unchanged:
+#     - From /add-role, tap add-role-back → returns to /settings.
+#     - Re-enter Add role — musician tile is still visible (no mutation fired).
+
+# Reset the test DB to the seedE2E fixture. This ensures promoter1 has a clean
+# state (roles=['promoter'] only, no leftover musician_profiles row from a
+# previous run).
+- runFlow: ../../helpers/reset.yaml
+
+# Bring the app to the foreground. clearKeychain: true wipes any stale
+# SecureStore-backed auth token before the AuthContext fires, ensuring the app
+# shows the login screen rather than auto-authenticating as a prior test user.
+# clearKeychain does NOT wipe the dev-client's saved server URL (NSUserDefaults),
+# so the Metro bundle URL survives — this is intentional (see flow 03 header).
+- launchApp:
+    clearKeychain: true
+
+# Allow the app's animation/initialisation phase to complete before querying the
+# accessibility tree. Without this, XCTest can return kAXErrorInvalidUIElement
+# and crash the subsequent conditional-logout check.
+- waitForAnimationToEnd
+
+# Belt-and-braces: if a stale session survives despite clearKeychain, log out
+# before proceeding to the login screen.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# Wait for the login screen. Cold bundle fetch can take 20-40s.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# Log in as promoter1. Seed password is password123 (not abcd1234 — that
+# belongs to the newbie fixture user). promoter1 has roles=['promoter'] so the
+# app guard passes and lands directly on the Home screen after auth.
+- tapOn:
+    id: "login-username"
+- inputText: "promoter1"
+- tapOn:
+    id: "login-password"
+- inputText: "password123"
+- tapOn:
+    id: "login-submit"
+
+# promoter1's firstName is stored as "promoter1" in the seed, so the home
+# screen greeting is "Hello promoter1".
+- assertVisible: "Hello promoter1"
+
+# =============================================================================
+# Cancellation path — back out before tapping a role tile (AC: role unchanged)
+# =============================================================================
+# Open the app drawer via the profile-menu button.
+- tapOn:
+    text: "Open profile menu"
+
+# Tap the Settings drawer row via testID — the row is a composite TouchableOpacity
+# so the testID is more reliable than tapping the child "Settings" text node
+# (which could match other screens containing that word).
+- tapOn:
+    id: "drawer-settings"
+
+# Verify the Settings screen is mounted.
+- assertVisible:
+    id: "settings-screen"
+
+# Tap "Add role" to navigate to the add-role picker.
+- tapOn:
+    id: "settings-add-role"
+
+# Verify the add-role picker is mounted.
+- assertVisible:
+    id: "add-role-picker"
+
+# Tap the back chevron to cancel. No role is selected so the mutation never
+# fires. The user should land back on /settings.
+- tapOn:
+    id: "add-role-back"
+
+# Verify we are back on Settings (not all the way back to Home).
+- assertVisible:
+    id: "settings-screen"
+
+# Re-enter the add-role picker. The musician tile must still be visible —
+# confirming no addRole mutation fired during the cancelled visit.
+- tapOn:
+    id: "settings-add-role"
+
+- assertVisible:
+    id: "add-role-picker"
+
+# promoter1 does NOT yet have the musician role, so the musician tile is visible.
+- assertVisible:
+    id: "add-role-option-musician"
+
+# promoter1 ALREADY has the promoter role, so the promoter tile must be absent.
+- assertNotVisible:
+    id: "add-role-option-promoter"
+
+# =============================================================================
+# Happy path — tap musician, complete musician step-2 + session-musician form
+# =============================================================================
+# Tap the musician tile. Tile is a composite Pressable — use testID per the
+# established project pattern (same rationale as kind-tiles and promoter step-2
+# tiles in flows 02 and 04). The mutation fires on tap and navigates to
+# /onboarding/musician on success.
+- tapOn:
+    id: "add-role-option-musician"
+
+# Assert we have arrived on the musician step-2 screen. extendedWaitUntil
+# covers any mutation + navigation latency.
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-musician-step2"
+    timeout: 15000
+
+# Select the "Session musician" tile. testID used — composite element.
+- tapOn:
+    id: "onboarding-musician-step2-session-musician"
+
+# Confirm the label is visible (tile renders its label as a child text node).
+- assertVisible: "Session musician"
+
+# Tap Next (now enabled) to navigate to /onboarding/session-musician.
+# Note: Next is disabled until a tile is tapped — a guard confirmed by flow 02.
+- tapOn:
+    id: "onboarding-musician-step2-next"
+
+# Wait for the session-musician form. The instrument input is always above the
+# fold and is the most stable anchor on this screen.
+- extendedWaitUntil:
+    visible:
+      id: "session-musician-instrument-input"
+    timeout: 15000
+
+# Add one instrument (Guitar) via the chip input + add-button pattern from
+# flow 03. At least one instrument is required to enable the submit button.
+- tapOn:
+    id: "session-musician-instrument-input"
+- inputText: "Guitar"
+- tapOn:
+    id: "session-musician-instrument-add"
+
+# Dismiss the keyboard by tapping the INSTRUMENTS section heading.
+# hideKeyboard is unreliable on React Native inputs — tapping a non-interactive
+# element is the established project workaround (see flow 03 header note).
+- tapOn: "INSTRUMENTS"
+
+# Submit can sit below the fold on smaller devices. Use an explicit mid-screen
+# swipe to avoid the tab-bar hit zone (tab bar sits at ~y=791 on an ~874pt
+# viewport; swipe starting at 65% stays above it — established pattern in
+# flows 03 and 04).
+- swipe:
+    start: "50%, 65%"
+    end: "50%, 20%"
+    duration: 400
+
+# Tap submit. The session-musician form is valid (at least one instrument).
+# On success, the screen calls router.replace('/') which lands on Home.
+- tapOn:
+    id: "session-musician-submit"
+
+# Assert the Home screen to confirm both persistence and the router.replace
+# navigation completed.
+- assertVisible: "Hello promoter1"
+
+# =============================================================================
+# Verify completion — both roles now present, add-role picker shows zero-state
+# =============================================================================
+# Open the drawer again to navigate back to Settings.
+- tapOn:
+    text: "Open profile menu"
+
+- tapOn:
+    id: "drawer-settings"
+
+- assertVisible:
+    id: "settings-screen"
+
+# Tap "Add role" again. promoter1 now has both musician and promoter roles so
+# there are no addable roles left. The picker should render the zero-state view.
+- tapOn:
+    id: "settings-add-role"
+
+- assertVisible:
+    id: "add-role-picker"
+
+# Assert the zero-state is visible — this confirms the AuthContext was updated
+# synchronously (via setRoles in the mutation's onSuccess) so the addable-roles
+# computation correctly sees both roles without a full page reload.
+- assertVisible:
+    id: "add-role-zero-state"
+
+# Neither role tile should be present (both already held).
+- assertNotVisible:
+    id: "add-role-option-musician"
+- assertNotVisible:
+    id: "add-role-option-promoter"
