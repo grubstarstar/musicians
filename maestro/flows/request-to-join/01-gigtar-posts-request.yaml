@@ -1,12 +1,17 @@
 appId: com.musicians.app
 ---
-# Flow 01 of the request-to-join e2e journey (MUS-71).
+# Flow 01 of the request-to-join e2e journey (MUS-71, updated MUS-68).
 # - Reset the test DB to the minimal fixture (gigtar, sesh, The Testers).
 # - Ensure the app is in the foreground (see launchApp note below).
 # - If a previous run left someone signed in, log them out first so we
 #   always start the journey from the login screen.
 # - Sign in as gigtar.
-# - Post a `Musician for a band` request: instrument = Bass, band = The Testers.
+# - Post a `Musician for a band` request: instrument = Bass Guitar (via
+#   the InstrumentAutocomplete component introduced in MUS-68), band = The Testers.
+#
+# MUS-68 replaced the free-text instrument TextInput with an autocomplete
+# that debounces 200ms and requires selecting a suggestion row to commit an
+# instrumentId. Typing alone no longer enables the submit button.
 - runFlow: ../../helpers/reset.yaml
 # The app is pre-launched by scripts/e2e-sim-setup.sh, which seeds the
 # dev-launcher defaults so it auto-connects to Metro. Maestro's own XCTest
@@ -43,11 +48,36 @@ appId: com.musicians.app
 # Tracked separately as an a11y follow-up.
 - assertVisible: "Post request"
 
-# Fill the instrument field via its placeholder text.
-- tapOn: "e.g. Bass"
-- inputText: "Bass"
-# `hideKeyboard` is unreliable on RN inputs — tap a non-interactive label
-# to dismiss the keyboard instead (Maestro's own recommended workaround).
+# --- Fill the instrument field via the InstrumentAutocomplete (MUS-68) ---
+# The TextInput now has testID "post-request-instrument". Tap it to focus,
+# then type a query. The autocomplete debounces 200ms before querying the
+# server, so we sleep 250ms after typing to let the suggestion list render.
+# Using testID here because the placeholder text ("e.g. Bass") is not
+# exposed in the iOS a11y tree — visible text is preferred but unavailable.
+- tapOn:
+    id: "post-request-instrument"
+- inputText: "Bass Guitar"
+- sleep: 250
+
+# The suggestion dropdown (testID: instrument-autocomplete-suggestions)
+# should now be visible. Assert its presence, then tap the "Bass Guitar"
+# row by visible text to commit the instrumentId.
+# We tap by visible text — the suggestion row renders the canonical
+# instrument name and is the only "Bass Guitar" text on screen at this
+# moment. Never tap by testID "instrument-autocomplete-option-<id>" since
+# the numeric id suffix is not stable across seed runs.
+- assertVisible:
+    id: "instrument-autocomplete-suggestions"
+- tapOn: "Bass Guitar"
+
+# After tapping a suggestion the dropdown hides and the input displays the
+# canonical name. Assert the name is visible to confirm the selection
+# committed and the dropdown dismissed.
+- assertVisible: "Bass Guitar"
+
+# Dismiss the keyboard by tapping the non-interactive section heading.
+# `hideKeyboard` is unreliable on React Native inputs — this is Maestro's
+# own recommended workaround.
 - tapOn: "INSTRUMENT"
 
 # Submit. The button sits below the fold on this form. `scrollUntilVisible`
