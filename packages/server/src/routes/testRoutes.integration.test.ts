@@ -112,7 +112,12 @@ describe.skipIf(skip)('POST /test/reset (integration)', () => {
     // deliberately pre-step-2.
     expect(memberships).toHaveLength(2);
     expect(allPromoterGroups.map((g) => g.name)).toEqual(['Test Promotions']);
-    expect(allVenues.map((v) => v.name)).toEqual(['Test Hall']);
+    // MUS-104: The Corner Stage added as a second venue to back the
+    // gig-detail journey's fixture gig (organiser promoter1, 3 open slots).
+    expect(allVenues.map((v) => v.name).sort()).toEqual([
+      'Test Hall',
+      'The Corner Stage',
+    ]);
     expect(allRoles.map((r) => r.role)).toEqual(['promoter']);
     expect(allPromoterLinks).toHaveLength(1);
     expect(allPromoterGroupVenueLinks).toHaveLength(1);
