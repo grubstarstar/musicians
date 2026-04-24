@@ -27,26 +27,10 @@ appId: com.musicians.app
 # only, onboardprom=promoter only, onboarddone=musician+band).
 - runFlow: ../../helpers/reset.yaml
 
-# clearKeychain wipes SecureStore-backed auth tokens so any surviving session
-# from a prior flow (e.g. promoter1 from flow 05) does not auto-authenticate
-# into home. Without this, AuthContext re-hydrates the stale token, the
-# server still accepts it (JWT not invalidated), and the app lands on home
-# — "Sign in to continue" never appears. clearKeychain does NOT wipe the
-# dev-client's saved server URL, so the Metro bundle URL survives.
-- launchApp:
-    clearKeychain: true
-
-# Wait for the cold-start bundle. The sim has already launched the app; a
-# fresh JS bundle fetch can take 20-40s before the login screen appears.
-- extendedWaitUntil:
-    visible: "Sign in to continue"
-    timeout: 60000
-
-# Defensive logout: a previous run may have left a session open.
-- runFlow:
-    when:
-      visible: "Open profile menu"
-    file: ../../helpers/logout.yaml
+# Cold-start prologue: clear keychain, settle animations, defensive logout,
+# wait for the login screen. See helpers/launch-to-login.yaml for the full
+# rationale of each step.
+- runFlow: ../../helpers/launch-to-login.yaml
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Cycle 1: newbie — no roles → should be redirected to role-picker

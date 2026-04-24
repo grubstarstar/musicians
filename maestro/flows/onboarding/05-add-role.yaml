@@ -28,30 +28,10 @@ appId: com.musicians.app
 # previous run).
 - runFlow: ../../helpers/reset.yaml
 
-# Bring the app to the foreground. clearKeychain: true wipes any stale
-# SecureStore-backed auth token before the AuthContext fires, ensuring the app
-# shows the login screen rather than auto-authenticating as a prior test user.
-# clearKeychain does NOT wipe the dev-client's saved server URL (NSUserDefaults),
-# so the Metro bundle URL survives — this is intentional (see flow 03 header).
-- launchApp:
-    clearKeychain: true
-
-# Allow the app's animation/initialisation phase to complete before querying the
-# accessibility tree. Without this, XCTest can return kAXErrorInvalidUIElement
-# and crash the subsequent conditional-logout check.
-- waitForAnimationToEnd
-
-# Belt-and-braces: if a stale session survives despite clearKeychain, log out
-# before proceeding to the login screen.
-- runFlow:
-    when:
-      visible: "Open profile menu"
-    file: ../../helpers/logout.yaml
-
-# Wait for the login screen. Cold bundle fetch can take 20-40s.
-- extendedWaitUntil:
-    visible: "Sign in to continue"
-    timeout: 60000
+# Cold-start prologue: clear keychain, settle animations, defensive logout,
+# wait for the login screen. See helpers/launch-to-login.yaml for the full
+# rationale of each step.
+- runFlow: ../../helpers/launch-to-login.yaml
 
 # Log in as promoter1. Seed password is password123 (not abcd1234 — that
 # belongs to the newbie fixture user). promoter1 has roles=['promoter'] so the

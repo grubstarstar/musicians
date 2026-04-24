@@ -1,0 +1,49 @@
+appId: com.musicians.app
+---
+# Shared prologue used by every onboarding flow after flow 01 (MUS-102).
+# Use when a flow needs to reach the login screen from a known-clean start.
+#
+# What this does, and why each step is here:
+#
+#   1. launchApp clearKeychain:true — wipes any SecureStore-backed auth token
+#      left by a previous flow. Without this, the AuthContext may re-hydrate a
+#      stale session and auto-route into home, skipping the login screen.
+#      clearKeychain does NOT wipe the dev-client's saved server URL (that
+#      lives in NSUserDefaults), so the Metro bundle URL survives — unlike
+#      clearState:true, which drops us back at the dev-launcher.
+#
+#   2. waitForAnimationToEnd — lets the app's animation/initialisation phase
+#      complete before we query the accessibility tree. Without it XCTest can
+#      return kAXErrorInvalidUIElement (HTTP 500) and crash the conditional-
+#      logout check below.
+#
+#   3. Conditional logout — belt-and-braces for the rare case where something
+#      survives the keychain wipe (e.g. a previous run that stored state
+#      somewhere other than the keychain). The `when: visible: "Open profile
+#      menu"` guard means the logout sub-flow only fires if we're actually
+#      already on home; otherwise it's a no-op.
+#
+#   4. extendedWaitUntil "Sign in to continue" — cold bundle fetch can take
+#      20-40s on a sandboxed simulator. This is the wait for the login screen
+#      to appear; every downstream flow assumes it's landed.
+#
+# Callers are responsible for running `../../helpers/reset.yaml` BEFORE this
+# helper when they need a clean DB fixture. Reset is not folded in here
+# because flow 02 legitimately runs without a reset (it relies on the seeded
+# `newbie` user being present, which reset.yaml would also provide — but that
+# flow pre-dates this helper and keeping the no-reset variant runnable is
+# useful for debugging).
+
+- launchApp:
+    clearKeychain: true
+
+- waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: logout.yaml
+
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
