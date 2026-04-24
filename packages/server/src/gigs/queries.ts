@@ -1,6 +1,14 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db.js';
-import { genres, gigSlots, gigs, userRoles, venues } from '../schema.js';
+import {
+  bands,
+  genres,
+  gigSlots,
+  gigs,
+  userRoles,
+  users,
+  venues,
+} from '../schema.js';
 import type { GigStatus } from '../schema.js';
 
 /**
@@ -41,6 +49,33 @@ export interface ShapedGig {
   status: GigStatus;
   organiserUserId: number;
   slots: ShapedGigSlot[];
+}
+
+// MUS-104: richer shape for the mobile gig detail screen. `getGigById` resolves
+// venue (for the header), organiser (display name), and the filled band's name
+// on each slot in a single batched fetch — we already look the gig up, so the
+// extra joins are cheap and avoid a round trip per slot. Kept as a distinct
+// interface from `ShapedGig` so `createGig` (which doesn't have the joined data
+// to hand) doesn't need to invent placeholder values.
+export interface ShapedGigSlotDetail extends ShapedGigSlot {
+  band: { id: number; name: string } | null;
+}
+
+export interface ShapedGigOrganiser {
+  id: number;
+  username: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+export interface ShapedGigDetail {
+  id: number;
+  datetime: Date;
+  venue: { id: number; name: string };
+  doors: string | null;
+  status: GigStatus;
+  organiser: ShapedGigOrganiser;
+  slots: ShapedGigSlotDetail[];
 }
 
 export interface ShapedGigSummary {
@@ -122,17 +157,26 @@ export async function createGig(
   });
 }
 
-export async function getGigById(id: number): Promise<ShapedGig | null> {
+export async function getGigById(id: number): Promise<ShapedGigDetail | null> {
+  // MUS-104: inner join `venues` + `users` so the header has everything it
+  // needs (venue name, organiser display identity) in a single round trip.
+  // Both are required FKs on `gigs`, so the inner join can't lose rows.
   const [gig] = await db
     .select({
       id: gigs.id,
       datetime: gigs.datetime,
-      venueId: gigs.venue_id,
       doors: gigs.doors,
       status: gigs.status,
-      organiserUserId: gigs.organiser_user_id,
+      venueId: venues.id,
+      venueName: venues.name,
+      organiserId: users.id,
+      organiserUsername: users.username,
+      organiserFirstName: users.firstName,
+      organiserLastName: users.lastName,
     })
     .from(gigs)
+    .innerJoin(venues, eq(venues.id, gigs.venue_id))
+    .innerJoin(users, eq(users.id, gigs.organiser_user_id))
     .where(eq(gigs.id, id))
     .limit(1);
   if (!gig) return null;
@@ -140,33 +184,55 @@ export async function getGigById(id: number): Promise<ShapedGig | null> {
   // MUS-103: left join `genres` so slots with a null `genre_id` still come
   // back (as `genre: null` after shaping), and slots with a set `genre_id`
   // carry the resolved `{ id, slug, name }` inline.
+  // MUS-104: left join `bands` on `band_id` so filled slots also carry the
+  // band's name — the detail screen needs it on each filled row. Open slots
+  // (band_id IS NULL) still come back because it's a left join.
   const slotRows = await db
     .select({
       id: gigSlots.id,
       setOrder: gigSlots.set_order,
       fee: gigSlots.fee,
       bandId: gigSlots.band_id,
+      bandName: bands.name,
       genreId: genres.id,
       genreSlug: genres.slug,
       genreName: genres.name,
     })
     .from(gigSlots)
     .leftJoin(genres, eq(genres.id, gigSlots.genre_id))
+    .leftJoin(bands, eq(bands.id, gigSlots.band_id))
     .where(eq(gigSlots.gig_id, id))
     .orderBy(asc(gigSlots.set_order));
 
-  const slots: ShapedGigSlot[] = slotRows.map((r) => ({
+  const slots: ShapedGigSlotDetail[] = slotRows.map((r) => ({
     id: r.id,
     setOrder: r.setOrder,
     fee: r.fee,
     bandId: r.bandId,
+    band:
+      r.bandId !== null && r.bandName !== null
+        ? { id: r.bandId, name: r.bandName }
+        : null,
     genre:
       r.genreId !== null && r.genreSlug !== null && r.genreName !== null
         ? { id: r.genreId, slug: r.genreSlug, name: r.genreName }
         : null,
   }));
 
-  return { ...gig, slots };
+  return {
+    id: gig.id,
+    datetime: gig.datetime,
+    venue: { id: gig.venueId, name: gig.venueName },
+    doors: gig.doors,
+    status: gig.status,
+    organiser: {
+      id: gig.organiserId,
+      username: gig.organiserUsername,
+      firstName: gig.organiserFirstName,
+      lastName: gig.organiserLastName,
+    },
+    slots,
+  };
 }
 
 /**

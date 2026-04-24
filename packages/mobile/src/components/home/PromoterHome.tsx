@@ -5,11 +5,14 @@ import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { QueryBoundary } from "../QueryBoundary";
 import { trpc } from "../../trpc";
+import { formatGigDatetime } from "../../utils/formatGigHeader";
 import { EntityCard } from "./Card";
 import { TimelineList } from "./TimelineList";
 
 type PromoterGroupRow =
   inferRouterOutputs<AppRouter>["promoterGroups"]["listMine"][number];
+
+type GigRow = inferRouterOutputs<AppRouter>["gigs"]["listMine"][number];
 
 const BOOKING_REQUESTS = [
   { band: "The Skylarks", status: "awaiting" as const, color: "#6c63ff" },
@@ -26,6 +29,14 @@ export function PromoterHome() {
     <ScrollView>
       <QueryBoundary>
         <MyPromoterGroups />
+      </QueryBoundary>
+
+      {/* MUS-104: entry point into the gig detail screen. Lives next to the
+          other caller-scoped sections so the promoter's own data clusters
+          visually ahead of the mocked BOOKING_REQUESTS / UPCOMING_SHOWS
+          placeholders. */}
+      <QueryBoundary>
+        <MyGigs />
       </QueryBoundary>
 
       <View style={styles.mockSection}>
@@ -168,6 +179,83 @@ function PromoterGroupRowView({
   );
 }
 
+/**
+ * MUS-104: "My gigs" surface on PromoterHome. Lists the caller's gigs
+ * (newest-created first, via `gigs.listMine`) and routes each row into the
+ * gig detail screen. Kept deliberately minimal — this is the bridge into the
+ * detail screen, not a management surface. Empty state gently encourages
+ * discovery via the Post Request flow rather than a dedicated create-gig
+ * button (creation is out of scope for MUS-104).
+ */
+function MyGigs() {
+  const router = useRouter();
+  const { data: gigs } = useSuspenseQuery(trpc.gigs.listMine.queryOptions());
+
+  if (gigs.length === 0) {
+    return (
+      <View style={styles.emptyStateWrap} testID="promoter-gigs-empty-state">
+        <View style={styles.emptyStateCard}>
+          <Text style={styles.emptyStateTitle}>No gigs yet</Text>
+          <Text style={styles.emptyStateBody}>
+            Gigs you organise will show up here.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.groupsWrap}>
+      <Text style={styles.sectionTitle} testID="promoter-gigs-section-header">
+        My gigs
+      </Text>
+      <View style={styles.groupsList}>
+        {gigs.map((gig, i) => (
+          <GigHomeRow
+            key={gig.id}
+            gig={gig}
+            isLast={i === gigs.length - 1}
+            onPress={() => router.push(`/gig/${gig.id}`)}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function GigHomeRow({
+  gig,
+  isLast,
+  onPress,
+}: {
+  gig: GigRow;
+  isLast: boolean;
+  onPress: () => void;
+}) {
+  // Datetime arrives as an ISO string over the tRPC wire even though the
+  // server types it as `Date`. Mirrors how the rehearsals list handles it.
+  const datetime = new Date(gig.datetime);
+  return (
+    <Pressable
+      testID={`promoter-gig-row-${gig.id}`}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open gig at ${gig.venue.name}`}
+      style={({ pressed }) => [
+        styles.groupRow,
+        !isLast && styles.groupRowBorder,
+        pressed && styles.groupRowPressed,
+      ]}
+    >
+      <Text style={styles.groupName}>{gig.venue.name}</Text>
+      <Text style={styles.venueAddress}>{formatGigDatetime(datetime)}</Text>
+      <Text style={styles.gigSlotSummary}>
+        {gig.openSlots} of {gig.totalSlots} open
+      </Text>
+    </Pressable>
+  );
+}
+
 function MockPill() {
   return (
     <View style={styles.mockPill}>
@@ -248,6 +336,7 @@ const styles = StyleSheet.create({
   venueRow: {},
   venueName: { color: "#fff", fontSize: 14, fontWeight: "500" },
   venueAddress: { color: "#7a7a85", fontSize: 12, marginTop: 1 },
+  gigSlotSummary: { color: "#6c63ff", fontSize: 12, marginTop: 4, fontWeight: "600" },
   venueEmpty: {
     color: "#7a7a85",
     fontSize: 13,
