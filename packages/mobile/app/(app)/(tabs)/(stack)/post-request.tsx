@@ -972,7 +972,9 @@ function BandForGigSlotForm(props: {
         onPress={() => props.setPickerOpen((v) => !v)}
         style={[styles.input, styles.pickerField]}
         accessibilityRole="button"
-        accessibilityLabel="Select a gig"
+        accessibilityLabel={
+          props.selectedGig ? formatGigSummary(props.selectedGig) : "Select a gig"
+        }
         accessibilityState={{ expanded: props.pickerOpen }}
         disabled={props.submitting}
       >
