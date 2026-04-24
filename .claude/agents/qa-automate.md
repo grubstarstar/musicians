@@ -89,6 +89,7 @@ Prefer selectors that describe what the user sees. In priority order:
 
 ## Quirks discovered in MUS-71 — internalise these
 
+- **`assertVisible` / `tapOn` are full-regex matches against `accessibilityText`.** Maestro compiles the string as a regex and requires it to match the element's full a11y text, not a substring. When the target element has composite a11y text — a list option rendered as `"<title>, <subtitle>, <checkmark>"`, a picker field showing `"<date> · <venue> · <slot-summary>"`, a chip with a clear-button label — a bare string fails. Wrap with `.*` on both sides: `assertVisible: ".*The Corner Stage.*"`. Surfaced repeatedly in MUS-77 e2e; three flow fixes were needed before the flow went green. Corollary: if `assertVisible: "<exact value>"` fails despite the screenshot clearly showing the value, first suspect composite a11y text, not a missing render.
 - **iOS tab bar labels** render as `"<Label>, tab, N of M"` for VoiceOver. Match with a regex suffix: `tapOn: "My requests, tab.*"`. Without the suffix the substring match drifts.
 - **Kind tiles** (the big radio cards on Post Request) render as composite `GenericElement` labels that Maestro can't reliably substring-match. Use a testID from dev's HANDOFF, or assert on a sibling heading.
 - **`hideKeyboard` is unreliable** on React Native inputs. To dismiss the keyboard, tap a non-interactive label (e.g. `tapOn: "INSTRUMENT"` — the section heading). This is Maestro's own recommended workaround.
