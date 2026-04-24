@@ -51,6 +51,7 @@ import {
   listOpenRequests,
 } from '../requests/queries.js';
 import {
+  bandGenres,
   bandMembers,
   bands,
   promoterGroups,
@@ -342,6 +343,10 @@ export const appRouter = router({
             gigId: z.number().int().positive(),
             setLength: z.number().int().positive().optional(),
             feeOffered: z.number().int().nonnegative().optional(),
+            // MUS-103: optional genre requirement. When set, the EoI hard-gate
+            // at `expressionsOfInterest.create` rejects applying bands whose
+            // `band_genres` don't include this id. Null/unset → any band.
+            genreId: z.number().int().positive().optional(),
           }),
           // `gig-for-band` (MUS-57): band-side request; no anchor object.
           // `targetDate` is a `yyyy-mm-dd` string (single date for this slice).
@@ -444,6 +449,7 @@ export const appRouter = router({
               gigId: input.gigId,
               setLength: input.setLength,
               feeOffered: input.feeOffered,
+              genreId: input.genreId,
               openSlotCount,
             },
             userId,
@@ -945,6 +951,33 @@ export const appRouter = router({
               message:
                 'You must be a member of the band to express interest on its behalf',
             });
+          }
+          // MUS-103: genre hard-gate. When the request snapshotted a
+          // `details.genreId` at creation time, the applying band's
+          // `band_genres` rows MUST include that id. A null/unset genreId
+          // means the slot is open to any band (back-compat with pre-MUS-103
+          // requests and with slots created without a genre requirement).
+          const requestDetails = req.details;
+          if (
+            requestDetails.kind === 'band-for-gig-slot' &&
+            typeof requestDetails.genreId === 'number'
+          ) {
+            const [match] = await db
+              .select({ band_id: bandGenres.band_id })
+              .from(bandGenres)
+              .where(
+                and(
+                  eq(bandGenres.band_id, input.details.bandId),
+                  eq(bandGenres.genre_id, requestDetails.genreId),
+                ),
+              )
+              .limit(1);
+            if (!match) {
+              throw new TRPCError({
+                code: 'FORBIDDEN',
+                message: 'Band genre does not match gig slot requirement.',
+              });
+            }
           }
         }
         // `gig-for-band` EoIs must carry a `gigId` pointing to a gig the

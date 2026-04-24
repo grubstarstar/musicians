@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db.js';
-import { gigSlots, gigs, userRoles, venues } from '../schema.js';
+import { genres, gigSlots, gigs, userRoles, venues } from '../schema.js';
 import type { GigStatus } from '../schema.js';
 
 /**
@@ -20,11 +20,17 @@ export async function hasPromoterRole(userId: number): Promise<boolean> {
 // Shaped (camelCase, no raw row leaks) return type for a gig plus its slots.
 // Slots are always returned in `set_order` ascending order so the lineup
 // renders consistently on the client without extra sorting.
+//
+// MUS-103: `genre` is the slot-level genre requirement, resolved to a
+// `{ id, slug, name }` shape or null when no filter is set. Clients use this
+// to render per-slot constraints and to decide whether to gate the
+// band-for-gig-slot CTA.
 export interface ShapedGigSlot {
   id: number;
   setOrder: number;
   fee: number | null;
   bandId: number | null;
+  genre: { id: number; slug: string; name: string } | null;
 }
 
 export interface ShapedGig {
@@ -102,9 +108,16 @@ export async function createGig(
               bandId: gigSlots.band_id,
             });
 
+    // MUS-103: createGig doesn't accept per-slot genre yet (gig creation UI
+    // is deferred — see ticket "out of scope"). Slots are inserted without
+    // `genre_id`, so we surface `genre: null` on every returned slot. When
+    // the UI lands this helper will grow a `genreId` input and the null
+    // literal becomes a lookup.
     return {
       ...gig,
-      slots: slotRows.sort((a, b) => a.setOrder - b.setOrder),
+      slots: slotRows
+        .map((s) => ({ ...s, genre: null }))
+        .sort((a, b) => a.setOrder - b.setOrder),
     };
   });
 }
@@ -124,16 +137,34 @@ export async function getGigById(id: number): Promise<ShapedGig | null> {
     .limit(1);
   if (!gig) return null;
 
-  const slots = await db
+  // MUS-103: left join `genres` so slots with a null `genre_id` still come
+  // back (as `genre: null` after shaping), and slots with a set `genre_id`
+  // carry the resolved `{ id, slug, name }` inline.
+  const slotRows = await db
     .select({
       id: gigSlots.id,
       setOrder: gigSlots.set_order,
       fee: gigSlots.fee,
       bandId: gigSlots.band_id,
+      genreId: genres.id,
+      genreSlug: genres.slug,
+      genreName: genres.name,
     })
     .from(gigSlots)
+    .leftJoin(genres, eq(genres.id, gigSlots.genre_id))
     .where(eq(gigSlots.gig_id, id))
     .orderBy(asc(gigSlots.set_order));
+
+  const slots: ShapedGigSlot[] = slotRows.map((r) => ({
+    id: r.id,
+    setOrder: r.setOrder,
+    fee: r.fee,
+    bandId: r.bandId,
+    genre:
+      r.genreId !== null && r.genreSlug !== null && r.genreName !== null
+        ? { id: r.genreId, slug: r.genreSlug, name: r.genreName }
+        : null,
+  }));
 
   return { ...gig, slots };
 }

@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import { and, eq, isNull, sql as sqlTag } from 'drizzle-orm';
 import { db, sql } from './db.js';
+import { genreSeed } from './genres-seed.js';
 import { instrumentSeed } from './instruments-seed.js';
 import {
   bandMembers,
@@ -8,6 +9,7 @@ import {
   bandTracks,
   engineersLiveAudioGroups,
   engineersRecordingStudios,
+  genres,
   gigs,
   gigSlots,
   instruments,
@@ -44,6 +46,25 @@ const defaultHash = await bcrypt.hash(defaultPassword, 12);
   } else {
     await db.insert(instruments).values(toInsert).onConflictDoNothing();
     console.log(`Seeded ${toInsert.length} instrument(s); taxonomy now has ${existing.length + toInsert.length} rows.`);
+  }
+}
+
+// --- MUS-103: genres taxonomy ---
+//
+// Idempotent upsert-by-slug. The migration seeds this on first apply too
+// (see `0015_genres_taxonomy.sql`); both paths converge on the same canonical
+// row set via `onConflictDoNothing` keyed on the unique slug constraint.
+{
+  const existing = await db.select({ id: genres.id, slug: genres.slug }).from(genres);
+  const existingSlugs = new Set(existing.map((r) => r.slug));
+  const toInsert = genreSeed.filter((s) => !existingSlugs.has(s.slug));
+  if (toInsert.length === 0) {
+    console.log(`Genres taxonomy already has ${existing.length} row(s) — skipped seed.`);
+  } else {
+    await db.insert(genres).values(toInsert).onConflictDoNothing();
+    console.log(
+      `Seeded ${toInsert.length} genre(s); taxonomy now has ${existing.length + toInsert.length} rows.`,
+    );
   }
 }
 

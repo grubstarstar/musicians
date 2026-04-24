@@ -19,6 +19,10 @@ export type RequestCreateInput =
       gigId: number;
       setLength?: number;
       feeOffered?: number;
+      // MUS-103: optional genre requirement. When set, it's snapshotted onto
+      // `details.genreId` and the EoI hard-gate rejects applying bands whose
+      // `band_genres` don't include this id.
+      genreId?: number;
       // Number of open slots at creation time — computed by the caller (the
       // tRPC router) after checking `gig_slots` for this gig. Kept as an
       // explicit field here so this pure helper stays infra-free.
@@ -118,6 +122,10 @@ export function buildRequestInsertValues(
       gigId: input.gigId,
       ...(input.setLength !== undefined ? { setLength: input.setLength } : {}),
       ...(input.feeOffered !== undefined ? { feeOffered: input.feeOffered } : {}),
+      // MUS-103: only set `genreId` when supplied. Keeping the key absent
+      // on back-compat requests lets the EoI hard-gate short-circuit on a
+      // simple `'genreId' in details` / truthy check.
+      ...(input.genreId !== undefined ? { genreId: input.genreId } : {}),
     };
     return {
       kind: 'band-for-gig-slot',

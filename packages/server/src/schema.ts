@@ -246,6 +246,12 @@ export const gigSlots = pgTable(
     band_id: integer('band_id').references(() => bands.id, { onDelete: 'set null' }),
     set_order: integer('set_order').notNull(),
     fee: integer('fee'),
+    // MUS-103: genre requirement for this slot. Null means no genre filter —
+    // any band may apply. `ON DELETE SET NULL` is deliberate: genres are a
+    // curated taxonomy and rarely removed, but if one ever is retired we
+    // keep the slot row intact and silently drop the filter rather than
+    // losing the slot itself.
+    genre_id: integer('genre_id').references(() => genres.id, { onDelete: 'set null' }),
     created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -339,6 +345,11 @@ export type RequestDetails =
       gigId: number;
       setLength?: number;
       feeOffered?: number;
+      // MUS-103: optional genre requirement snapshot from the gig slot. When
+      // set, EoIs from bands whose `band_genres` do not include this id are
+      // hard-rejected at `expressionsOfInterest.create` time. When unset or
+      // null, any band may apply (back-compat with pre-MUS-103 requests).
+      genreId?: number;
     }
   // `gig-for-band` (MUS-57): a band broadcasts that it's looking for a gig on
   // a specific date. No anchor object on the request side — the gig is
@@ -526,24 +537,75 @@ export const musicianProfiles = pgTable('musician_profiles', {
 
 export type MusicianProfile = typeof musicianProfiles.$inferSelect;
 
+// --- Genres taxonomy (MUS-103) ---
+//
+// Curated controlled vocabulary used by `band_genres` and `gig_slots.genre_id`
+// to power the band-for-gig-slot matching rule. Modelled as a table (not a
+// pgEnum) for the same reason as `instruments`: new genres are added via
+// seed without a schema migration per entry. `slug` is the stable identifier
+// clients and URLs can key off, `name` is the human-readable display value,
+// and `sort_order` controls the canonical UI order (smaller first).
+//
+// No "Other" fallback row — unlike the instruments taxonomy, a gig slot's
+// genre filter is allowed to be null (meaning "any band"), so there's no
+// need for a catch-all row to anchor free-text inputs. Genres are either
+// one of the curated set or unset.
+export const genres = pgTable('genres', {
+  id: serial('id').primaryKey(),
+  slug: text('slug').unique().notNull(),
+  name: text('name').notNull(),
+  sort_order: integer('sort_order').notNull().default(0),
+  created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Many-to-many: a band has zero or more genres. Composite PK on
+// (band_id, genre_id) — no surrogate id, no extra metadata, just the link.
+//
+// FK cascade decisions (MUS-103):
+//   - `band_id` → ON DELETE CASCADE: deleting a band removes its genre
+//     links, mirrors `band_members` / `band_tracks`.
+//   - `genre_id` → ON DELETE RESTRICT (default): refuse to delete a genre
+//     that's still linked to any band. The curated taxonomy is rarely
+//     edited, and a silent cascade would destroy band-side metadata that
+//     admins may not have meant to lose. Explicit cleanup is safer.
+export const bandGenres = pgTable(
+  'band_genres',
+  {
+    band_id: integer('band_id')
+      .notNull()
+      .references(() => bands.id, { onDelete: 'cascade' }),
+    genre_id: integer('genre_id')
+      .notNull()
+      .references(() => genres.id, { onDelete: 'restrict' }),
+  },
+  (table) => [primaryKey({ columns: [table.band_id, table.genre_id] })],
+);
+
+export type Genre = typeof genres.$inferSelect;
+export type BandGenre = typeof bandGenres.$inferSelect;
+
 // Camel-case DTO shape returned by `bands.list` and `bands.listMine` (mobile)
 // and the `/api/bands` REST endpoint (web). Independent of the raw `Band` row
 // type so the snake_case `created_by_user_id` column doesn't leak to clients
 // — that column is intentionally NOT exposed on the list shapes (it's only
 // surfaced on `BandProfile`, where the mobile profile screen needs it for the
 // "Add members" CTA gate).
+//
+// MUS-103: `genres` is the band's curated-taxonomy links, resolved to a
+// shaped `{ id, slug, name }[]` so clients don't need a second join.
 export interface BandWithMembers {
   id: number;
   name: string;
   imageUrl: string | null;
   members: Pick<User, 'id' | 'username' | 'firstName' | 'lastName'>[];
+  genres: { id: number; slug: string; name: string }[];
 }
 
 // `BandProfile` deliberately rewrites the `Band` shape in camelCase rather
 // than extending it: the DB columns are `snake_case` but the tRPC response
 // shape is `camelCase` (per the CLAUDE.md convention of explicit projections
 // with camelCase keys). MUS-92 added `created_by_user_id` → `createdByUserId`
-// here.
+// here. MUS-103 added `genres`.
 export interface BandProfile {
   id: number;
   name: string;
@@ -551,4 +613,5 @@ export interface BandProfile {
   createdByUserId: number | null;
   members: Pick<User, 'id' | 'username' | 'firstName' | 'lastName'>[];
   tracks: Pick<BandTrack, 'id' | 'title' | 'url' | 'position'>[];
+  genres: { id: number; slug: string; name: string }[];
 }
