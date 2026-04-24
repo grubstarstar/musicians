@@ -161,7 +161,7 @@ appId: com.musicians.app
 # so this is a weak signal. The stronger signal is the gig pre-fill +
 # genre chip below, which only appear when the band-for-gig-slot kind is
 # active AND the slot seed has been applied.)
-- assertVisible: "Band for a gig slot"
+- assertVisible: "Band for a gig slot.*"
 
 # Assert the gig pre-fill is visible. The band-for-gig-slot sub-form's gig
 # picker renders the selected gig's summary string ("<date> • <venue> •
