@@ -167,9 +167,11 @@ appId: com.musicians.app
 # picker renders the selected gig's summary string ("<date> • <venue> •
 # <open>/<total> open"), so "The Corner Stage" appearing inside the Post
 # Request screen (not the gig-detail screen we came from) confirms the
-# gig was auto-selected from the slot's gig_id.
-- assertVisible: "The Corner Stage"
+# gig was auto-selected from the slot's gig_id. The full accessibility text
+# of the picker is the composite summary, so match it as a substring regex.
+- assertVisible: ".*The Corner Stage.*"
 
 # Assert the seeded genre pill is visible and carries the slot's genre name.
-# The seedE2E fixture tags slot 0 with `rock` → name `Rock`.
-- assertVisible: "Rock"
+# The seedE2E fixture tags slot 0 with `rock` → name `Rock`. The genre chip
+# renders additional a11y text around the value, so match as a substring.
+- assertVisible: ".*Rock.*"
