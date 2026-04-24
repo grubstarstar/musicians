@@ -1,0 +1,141 @@
+appId: com.musicians.app
+---
+# Flow 01 of the gig-detail e2e journey (MUS-104).
+# Entry state: fresh app launch, no one signed in.
+# Source of truth: seedE2E (runs against the musicians_test DB via /test/reset).
+#
+# This flow exercises the new GigDetail screen from the organiser's perspective:
+#   - Reset the test DB to the minimal fixture (includes the MUS-104 sample gig
+#     seeded under promoter1's account with 3 open slots; slot 1 has genre Rock).
+#   - Log in as promoter1 (the seeded gig organiser).
+#   - Switch context to "Promoter" so PromoterHome renders.
+#   - Assert the "My gigs" section header is visible on PromoterHome.
+#   - Tap the seeded gig row (matched by venue name "The Corner Stage" in text,
+#     since the numeric id suffix on promoter-gig-row-<id> is not known ahead of
+#     time; visible text is preferred per selector rules).
+#   - Assert gig-detail-screen testID is visible — confirms navigation landed.
+#   - Assert the venue name "The Corner Stage" is visible in the header.
+#   - Assert a formatted datetime string is visible in the header. We check for
+#     the literal text rendered for the seeded gig; any non-empty datetime text
+#     is enough — the exact format is an implementation detail so we assert on a
+#     substring that should always be present regardless of locale.
+#   - Assert gig-slot-row-1 testID (first slot, Set 1) is visible.
+#   - Assert "Rock" genre pill is visible inside the first slot row.
+#   - Assert gig-slot-row-2 (Set 2) is visible.
+#   - Assert post-request-cta-gig-slot is visible (all 3 slots are open for the
+#     organiser in the fresh seed).
+#   - Tap post-request-cta-gig-slot. Assert the Post Request screen opens (the
+#     pre-fill logic for slotId lives in MUS-77 — this flow only asserts
+#     navigation).
+
+# Reset the test DB to the seedE2E fixture. seedE2E includes the MUS-104
+# additions: promoter1's sample gig ("The Corner Stage"), 3 open slots, slot 1
+# tagged with genre "Rock".
+- runFlow: ../../helpers/reset.yaml
+
+# Bring the app to the foreground. No clearState — that wipes the dev-client's
+# saved server URL and drops us at the dev launcher screen instead of the app.
+- launchApp
+
+# Cold bundle fetch can take 20-40s on the sandboxed simulator. Wait explicitly
+# before interacting with the login screen.
+- extendedWaitUntil:
+    visible: "Sign in to continue"
+    timeout: 60000
+
+# If a previous run left someone signed in, log them out so we start clean.
+- runFlow:
+    when:
+      visible: "Open profile menu"
+    file: ../../helpers/logout.yaml
+
+# Log in as the seeded promoter user. firstName is null so UserContext falls
+# back to the username in the greeting.
+- assertVisible: "Sign in to continue"
+- tapOn:
+    id: "login-username"
+- inputText: "promoter1"
+- tapOn:
+    id: "login-password"
+- inputText: "password123"
+- tapOn:
+    id: "login-submit"
+
+- assertVisible: "Hello promoter1"
+
+# Switch to Promoter context via the app drawer so PromoterHome renders.
+# The app defaults to "musician" context on login.
+- tapOn:
+    text: "Open profile menu"
+- tapOn: "Promoter"
+
+# Dismiss the drawer by tapping the Home tab.
+- tapOn: "Home, tab.*"
+
+# Assert the "My gigs" section header rendered on PromoterHome. This testID is
+# the stable anchor confirming the section is present before we attempt to tap
+# a row (preferred over text because "My gigs" could appear elsewhere).
+- assertVisible:
+    id: "promoter-gigs-section-header"
+
+# Tap the seeded gig row. The HANDOFF says the testID suffix is the gig's
+# numeric primary key which we don't know at flow-write time, so we match
+# by visible text instead (preferred selector: text over testID).
+# The seeded gig's venue is "The Corner Stage" — the row renders the venue
+# name prominently as its title.
+- tapOn: "The Corner Stage"
+
+# Assert gig-detail-screen is visible — the stable signal that navigation
+# landed on the GigDetail screen. extendedWaitUntil guards against the
+# screen's QueryBoundary suspense resolve.
+- extendedWaitUntil:
+    visible:
+      id: "gig-detail-screen"
+    timeout: 8000
+
+# Assert the venue name in the header (visible text, most resilient selector).
+- assertVisible: "The Corner Stage"
+
+# Assert a datetime is rendered in the header. The seeded gig has a specific
+# datetime; we assert on the year ("2025" or "2026") as the minimal stable
+# substring — avoids locale/format assumptions while still verifying that
+# the datetime element rendered at all.
+- assertVisible:
+    text: "202.*"
+
+# Assert the first slot row (Set 1) is visible.
+- assertVisible:
+    id: "gig-slot-row-1"
+
+# Assert "Rock" genre pill inside the first slot row. The pill's visible text
+# is the genre name from the taxonomy (title-cased or as seeded). The HANDOFF
+# confirms slot 1 has genre Rock; slots 2 and 3 have no genre.
+- assertVisible: "Rock"
+
+# Scroll down to ensure slot rows 2 and 3, and the CTA, are in view.
+# Use an explicit mid-screen swipe — scrollUntilVisible starts near the
+# bottom edge where iOS interprets the touch as a tab tap.
+- swipe:
+    start: "50%, 65%"
+    end: "50%, 20%"
+    duration: 400
+
+# Assert the second slot row (Set 2) is visible after scrolling.
+- assertVisible:
+    id: "gig-slot-row-2"
+
+# Assert the open-slot CTA is visible. All three slots are open for the
+# organiser in the fresh seed, so at least the first match will be present.
+- assertVisible:
+    id: "post-request-cta-gig-slot"
+
+# Tap the CTA. Maestro picks the first visible match (the first open slot in
+# set order — Set 1). The HANDOFF confirms this navigates to
+# /post-request?kind=band-for-gig-slot&slotId=<id>.
+- tapOn:
+    id: "post-request-cta-gig-slot"
+
+# Assert the Post Request screen opened. This ticket only verifies navigation
+# — the MUS-77 flow will assert slotId pre-fill. Use the visible screen title
+# to confirm we arrived.
+- assertVisible: "Post request"
