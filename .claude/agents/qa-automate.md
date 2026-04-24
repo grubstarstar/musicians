@@ -74,7 +74,7 @@ Create a new file when **any** of these are true:
 Ticket adds a "remember me" checkbox to the existing login screen. The `onboarding/` journey already covers login in multiple flows.
 
 - Apply the rubric: new behaviour is on an **existing** screen (login), reached via the **same** path as existing flows, tests a **field extension** (a new checkbox), and the shortest-sibling flow is well under 200 lines.
-- All three "extend" conditions are true → pick the cheapest existing flow that already touches the login screen (`02-onboarding-musician.yaml` or similar), append the checkbox toggle + assertion after the existing login step, and keep everything else intact.
+- All three "extend" conditions are true → pick the cheapest existing flow that already touches the login screen (the shortest sibling in the journey that logs in — e.g. `03-onboarding-session-musician.yaml` at ~140 lines is a much lighter anchor than `02-onboarding-musician.yaml` at ~300 lines), append the checkbox toggle + assertion after the existing login step, and keep everything else intact.
 - Do NOT spin up `07-remember-me.yaml` just because the login screen is "a concept worth its own file". A new file would re-run the full cold-start prologue plus signup — all duplicated work.
 
 By contrast, a ticket that adds a whole new password-reset journey (reached via a "Forgot password" link, using a different email delivery path) is a new-flow case: different entry point, different fixture (seeded reset token), different narrative. That's a new file (or a new journey dir, if it's big).
