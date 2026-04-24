@@ -1,8 +1,53 @@
 import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db.js';
 import type { CreateEntityResult } from '../onboarding/createEntityResult.js';
-import { bandMembers, bandTracks, bands, users } from '../schema.js';
+import {
+  bandGenres,
+  bandMembers,
+  bandTracks,
+  bands,
+  genres,
+  users,
+} from '../schema.js';
 import type { BandProfile, BandWithMembers } from '../schema.js';
+
+// MUS-103: shaped genre summary attached to band DTOs. Explicit projection
+// (id/slug/name only) — `sort_order` and `created_at` stay server-side.
+export interface BandGenreSummary {
+  id: number;
+  slug: string;
+  name: string;
+}
+
+// Loads the `{id, slug, name}[]` genre list for a given set of band ids in a
+// single query (avoids N+1). Returned as a Map<bandId, genres[]> so callers
+// can join back to each band cheaply. Genres per band are sorted by
+// `genres.sort_order` so UI listings are deterministic without client-side
+// sorting.
+async function loadGenresByBandIds(
+  bandIds: number[],
+): Promise<Map<number, BandGenreSummary[]>> {
+  const result = new Map<number, BandGenreSummary[]>();
+  if (bandIds.length === 0) return result;
+  const rows = await db
+    .select({
+      bandId: bandGenres.band_id,
+      id: genres.id,
+      slug: genres.slug,
+      name: genres.name,
+      sortOrder: genres.sort_order,
+    })
+    .from(bandGenres)
+    .innerJoin(genres, eq(genres.id, bandGenres.genre_id))
+    .where(inArray(bandGenres.band_id, bandIds))
+    .orderBy(asc(genres.sort_order), asc(genres.name));
+  for (const r of rows) {
+    const list = result.get(r.bandId) ?? [];
+    list.push({ id: r.id, slug: r.slug, name: r.name });
+    result.set(r.bandId, list);
+  }
+  return result;
+}
 
 export async function listBands(): Promise<BandWithMembers[]> {
   // Explicit projection — see `BandWithMembers` for why `created_by_user_id`
@@ -28,6 +73,9 @@ export async function listBands(): Promise<BandWithMembers[]> {
     .from(bandMembers)
     .innerJoin(users, eq(users.id, bandMembers.user_id));
 
+  // MUS-103: fetch genres in one batched query rather than per-band.
+  const genresByBandId = await loadGenresByBandIds(allBands.map((b) => b.id));
+
   return allBands.map((band) => ({
     ...band,
     members: allMembers
@@ -38,6 +86,7 @@ export async function listBands(): Promise<BandWithMembers[]> {
         firstName,
         lastName,
       })),
+    genres: genresByBandId.get(band.id) ?? [],
   }));
 }
 
@@ -79,6 +128,10 @@ export async function listMyBands(userId: number): Promise<BandWithMembers[]> {
     .innerJoin(users, eq(users.id, bandMembers.user_id))
     .where(inArray(bandMembers.band_id, bandIds));
 
+  // MUS-103: one batched fetch for all bands the caller belongs to — avoids
+  // N+1 per band.
+  const genresByBandId = await loadGenresByBandIds(bandIds);
+
   return myBands.map((band) => ({
     ...band,
     members: membersOfMyBands
@@ -89,6 +142,7 @@ export async function listMyBands(userId: number): Promise<BandWithMembers[]> {
         firstName,
         lastName,
       })),
+    genres: genresByBandId.get(band.id) ?? [],
   }));
 }
 
@@ -160,5 +214,17 @@ export async function getBandProfile(id: number): Promise<BandProfile | null> {
     .where(eq(bandTracks.band_id, id))
     .orderBy(asc(bandTracks.position));
 
-  return { ...band, members, tracks };
+  // MUS-103: per-band genre list. Single band, so no Map gymnastics needed.
+  const bandGenreRows = await db
+    .select({
+      id: genres.id,
+      slug: genres.slug,
+      name: genres.name,
+    })
+    .from(bandGenres)
+    .innerJoin(genres, eq(genres.id, bandGenres.genre_id))
+    .where(eq(bandGenres.band_id, id))
+    .orderBy(asc(genres.sort_order), asc(genres.name));
+
+  return { ...band, members, tracks, genres: bandGenreRows };
 }

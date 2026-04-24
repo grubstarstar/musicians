@@ -38,6 +38,12 @@ const TRUNCATE_TABLES = [
   'promoter_groups',
   'user_roles',
   'musician_profiles',
+  // MUS-103: band_genres is the join side; listed explicitly so a future
+  // edit to this list doesn't silently leak band-side genre rows between
+  // resets. `genres` itself is NOT truncated — it's a curated taxonomy
+  // seeded by migration and must survive resets (Maestro flows rely on
+  // the post-migration rows being there).
+  'band_genres',
   'band_tracks',
   'band_members',
   'bands',
