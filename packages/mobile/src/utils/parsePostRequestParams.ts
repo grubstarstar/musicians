@@ -31,6 +31,15 @@ export interface PostRequestSeed {
    * deep-link accuracy, but currently has no render target.
    */
   genre: string | null;
+  /**
+   * MUS-77: slot-anchored entry point from the gig-detail `+` CTA. The slot
+   * itself carries both the gig (via `gig_id` FK) and the genre requirement
+   * (via `genre_id` FK), so downstream form seeding can derive `gigId` and
+   * `genreId` from a single slot lookup — preferred over supplying them
+   * separately in the URL. `gigId` + `genre` remain supported for
+   * back-compat with MUS-70 callers.
+   */
+  slotId: number | null;
 }
 
 const VALID_KINDS: ReadonlySet<SeedRequestKind> = new Set<SeedRequestKind>([
@@ -77,8 +86,9 @@ export function parsePostRequestParams(
   const bandId = parsePositiveInt(firstString(raw.bandId));
   const gigId = parsePositiveInt(firstString(raw.gigId));
   const genre = firstString(raw.genre);
+  const slotId = parsePositiveInt(firstString(raw.slotId));
 
-  return { kind, bandId, gigId, genre };
+  return { kind, bandId, gigId, genre, slotId };
 }
 
 function parsePositiveInt(s: string | null): number | null {

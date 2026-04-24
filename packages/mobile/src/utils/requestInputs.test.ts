@@ -78,6 +78,7 @@ describe('buildBandForGigSlotInput', () => {
         gigId: 42,
         setLength: '45',
         feeOffered: '25000',
+        genreId: null,
       }),
     ).toEqual({
       kind: 'band-for-gig-slot',
@@ -89,13 +90,23 @@ describe('buildBandForGigSlotInput', () => {
 
   it('omits setLength when the field is empty or non-numeric', () => {
     expect(
-      buildBandForGigSlotInput({ gigId: 1, setLength: '', feeOffered: '' }),
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '',
+        feeOffered: '',
+        genreId: null,
+      }),
     ).toEqual({
       kind: 'band-for-gig-slot',
       gigId: 1,
     });
     expect(
-      buildBandForGigSlotInput({ gigId: 1, setLength: 'abc', feeOffered: '' }),
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: 'abc',
+        feeOffered: '',
+        genreId: null,
+      }),
     ).toEqual({
       kind: 'band-for-gig-slot',
       gigId: 1,
@@ -104,19 +115,39 @@ describe('buildBandForGigSlotInput', () => {
 
   it('drops setLength when zero or negative (server requires > 0)', () => {
     expect(
-      buildBandForGigSlotInput({ gigId: 1, setLength: '0', feeOffered: '' }),
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '0',
+        feeOffered: '',
+        genreId: null,
+      }),
     ).toEqual({ kind: 'band-for-gig-slot', gigId: 1 });
     expect(
-      buildBandForGigSlotInput({ gigId: 1, setLength: '-5', feeOffered: '' }),
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '-5',
+        feeOffered: '',
+        genreId: null,
+      }),
     ).toEqual({ kind: 'band-for-gig-slot', gigId: 1 });
   });
 
   it('accepts feeOffered of 0 (free gig) and drops negative fees', () => {
     expect(
-      buildBandForGigSlotInput({ gigId: 1, setLength: '', feeOffered: '0' }),
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '',
+        feeOffered: '0',
+        genreId: null,
+      }),
     ).toEqual({ kind: 'band-for-gig-slot', gigId: 1, feeOffered: 0 });
     expect(
-      buildBandForGigSlotInput({ gigId: 1, setLength: '', feeOffered: '-100' }),
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '',
+        feeOffered: '-100',
+        genreId: null,
+      }),
     ).toEqual({ kind: 'band-for-gig-slot', gigId: 1 });
   });
 
@@ -126,6 +157,7 @@ describe('buildBandForGigSlotInput', () => {
         gigId: 1,
         setLength: '  30  ',
         feeOffered: '  1000  ',
+        genreId: null,
       }),
     ).toEqual({
       kind: 'band-for-gig-slot',
@@ -133,6 +165,50 @@ describe('buildBandForGigSlotInput', () => {
       setLength: 30,
       feeOffered: 1000,
     });
+  });
+
+  // MUS-77: slot-anchored genre requirement seeded through from the
+  // gig-detail `+` CTA. When the slot has a genre, it flows to the server
+  // as `genreId`; when null (cleared or no slot genre), the key is absent.
+  it('serialises genreId when supplied (MUS-77)', () => {
+    expect(
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '',
+        feeOffered: '',
+        genreId: 5,
+      }),
+    ).toEqual({ kind: 'band-for-gig-slot', gigId: 1, genreId: 5 });
+  });
+
+  it('omits genreId when null (MUS-77)', () => {
+    expect(
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '',
+        feeOffered: '',
+        genreId: null,
+      }),
+    ).toEqual({ kind: 'band-for-gig-slot', gigId: 1 });
+  });
+
+  it('drops zero and negative genreId (strict positive ids, MUS-77)', () => {
+    expect(
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '',
+        feeOffered: '',
+        genreId: 0,
+      }),
+    ).toEqual({ kind: 'band-for-gig-slot', gigId: 1 });
+    expect(
+      buildBandForGigSlotInput({
+        gigId: 1,
+        setLength: '',
+        feeOffered: '',
+        genreId: -1,
+      }),
+    ).toEqual({ kind: 'band-for-gig-slot', gigId: 1 });
   });
 });
 

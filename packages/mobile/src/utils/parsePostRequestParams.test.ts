@@ -10,6 +10,7 @@ describe('parsePostRequestParams', () => {
       bandId: 12,
       gigId: null,
       genre: null,
+      slotId: null,
     });
   });
 
@@ -25,6 +26,22 @@ describe('parsePostRequestParams', () => {
       bandId: null,
       gigId: 7,
       genre: 'jazz',
+      slotId: null,
+    });
+  });
+
+  it('parses a band-for-gig-slot seed with slotId (MUS-77)', () => {
+    // The slotId-anchored entry point emitted by the gig-detail `+` CTA.
+    // gigId and genre are intentionally NOT supplied here — the seed
+    // consumer looks them up server-side from the slot.
+    expect(
+      parsePostRequestParams({ kind: 'band-for-gig-slot', slotId: '42' }),
+    ).toEqual({
+      kind: 'band-for-gig-slot',
+      bandId: null,
+      gigId: null,
+      genre: null,
+      slotId: 42,
     });
   });
 
@@ -34,6 +51,7 @@ describe('parsePostRequestParams', () => {
       bandId: null,
       gigId: null,
       genre: null,
+      slotId: null,
     });
   });
 
@@ -45,6 +63,7 @@ describe('parsePostRequestParams', () => {
       bandId: null,
       gigId: null,
       genre: null,
+      slotId: null,
     });
   });
 
@@ -52,6 +71,22 @@ describe('parsePostRequestParams', () => {
     expect(parsePostRequestParams({ bandId: '0' }).bandId).toBeNull();
     // Negative ids fail the strict /^\d+$/ regex — `-` isn't a digit.
     expect(parsePostRequestParams({ bandId: '-5' }).bandId).toBeNull();
+  });
+
+  it('rejects non-numeric slotId (MUS-77)', () => {
+    expect(parsePostRequestParams({ slotId: 'nope' }).slotId).toBeNull();
+  });
+
+  it('rejects zero and negative slotId (MUS-77)', () => {
+    expect(parsePostRequestParams({ slotId: '0' }).slotId).toBeNull();
+    expect(parsePostRequestParams({ slotId: '-3' }).slotId).toBeNull();
+  });
+
+  it('rejects mixed alphanumeric slotId (strict digits only, MUS-77)', () => {
+    // Mirrors the bandId strict-digits rule: `Number.parseInt('7foo', 10)`
+    // would succeed as 7; the parser rejects it so a mangled URL doesn't
+    // silently pre-fill the form from the wrong slot.
+    expect(parsePostRequestParams({ slotId: '7foo' }).slotId).toBeNull();
   });
 
   it('rejects mixed alphanumeric bandId (strict digits only)', () => {
@@ -67,13 +102,26 @@ describe('parsePostRequestParams', () => {
       bandId: null,
       gigId: null,
       genre: null,
+      slotId: null,
     });
   });
 
   it('treats empty strings as missing', () => {
     expect(
-      parsePostRequestParams({ kind: '', bandId: '', gigId: '', genre: '' }),
-    ).toEqual({ kind: null, bandId: null, gigId: null, genre: null });
+      parsePostRequestParams({
+        kind: '',
+        bandId: '',
+        gigId: '',
+        genre: '',
+        slotId: '',
+      }),
+    ).toEqual({
+      kind: null,
+      bandId: null,
+      gigId: null,
+      genre: null,
+      slotId: null,
+    });
   });
 
   it('treats whitespace-only strings as missing', () => {

@@ -25,6 +25,10 @@ export interface BandForGigSlotInput {
   gigId: number;
   setLength?: number;
   feeOffered?: number;
+  // MUS-77: the gig-detail `+` CTA carries the slot's genre requirement
+  // through to the request. Null (or absent) means "open to any band". The
+  // server re-uses this as the EoI hard-gate filter (MUS-103).
+  genreId?: number;
 }
 
 export interface GigForBandInput {
@@ -93,6 +97,11 @@ export function buildBandForGigSlotInput(args: {
   gigId: number;
   setLength: string;
   feeOffered: string;
+  // MUS-77: carried through from the slot-seed lookup when the gig-detail
+  // CTA sourced the request. Null when the slot had no genre, or when the
+  // user cleared it on the form. We only serialise the key when we have a
+  // positive id so the server sees "absent" for the null case.
+  genreId: number | null;
 }): BandForGigSlotInput {
   const payload: BandForGigSlotInput = {
     kind: 'band-for-gig-slot',
@@ -103,6 +112,9 @@ export function buildBandForGigSlotInput(args: {
   const feeOffered = Number.parseInt(args.feeOffered.trim(), 10);
   if (Number.isFinite(feeOffered) && feeOffered >= 0) {
     payload.feeOffered = feeOffered;
+  }
+  if (args.genreId !== null && args.genreId > 0) {
+    payload.genreId = args.genreId;
   }
   return payload;
 }
