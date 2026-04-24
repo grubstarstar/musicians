@@ -290,6 +290,60 @@ export async function listGigsByOrganiser(
   });
 }
 
+// MUS-77: slot-anchored post-request seed. Returns the slot's gig + genre so
+// the mobile form can pre-fill `band-for-gig-slot` state from a single URL
+// param (the `+` CTA on the gig detail screen emits `slotId=<id>`).
+//
+// The `organiserUserId` on the result lets callers enforce the ownership
+// gate at the procedure boundary — we return the raw id (not a boolean
+// "yours") so tests and future callers can assert identity directly.
+export interface ShapedGigSlotForSeed {
+  slotId: number;
+  gigId: number;
+  organiserUserId: number;
+  genre: { id: number; slug: string; name: string } | null;
+}
+
+/**
+ * Looks up a single gig slot by id, returning the owning gig's organiser and
+ * the slot's optional genre. Used by the post-request form seed flow to
+ * derive `gigId` + `genreId` from a single slot reference.
+ *
+ * Returns `null` if the slot does not exist. The caller is responsible for
+ * checking `organiserUserId === callerId` before trusting the result — see
+ * the tRPC procedure for the auth gate.
+ */
+export async function getGigSlotForSeed(
+  slotId: number,
+): Promise<ShapedGigSlotForSeed | null> {
+  const [row] = await db
+    .select({
+      slotId: gigSlots.id,
+      gigId: gigs.id,
+      organiserUserId: gigs.organiser_user_id,
+      genreId: genres.id,
+      genreSlug: genres.slug,
+      genreName: genres.name,
+    })
+    .from(gigSlots)
+    .innerJoin(gigs, eq(gigs.id, gigSlots.gig_id))
+    .leftJoin(genres, eq(genres.id, gigSlots.genre_id))
+    .where(eq(gigSlots.id, slotId))
+    .limit(1);
+
+  if (!row) return null;
+
+  return {
+    slotId: row.slotId,
+    gigId: row.gigId,
+    organiserUserId: row.organiserUserId,
+    genre:
+      row.genreId !== null && row.genreSlug !== null && row.genreName !== null
+        ? { id: row.genreId, slug: row.genreSlug, name: row.genreName }
+        : null,
+  };
+}
+
 /**
  * Returns the count of slots on a gig that still have `band_id IS NULL`.
  * Used by `requests.create` to set `slot_count` on a band-for-gig-slot request.

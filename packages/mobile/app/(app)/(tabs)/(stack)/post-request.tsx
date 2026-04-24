@@ -1,7 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -108,17 +112,44 @@ function PostRequestForm() {
   // (e.g. band page `+`, gig page `+`). `useLocalSearchParams` is stable on
   // first render; we only consume it once to seed `useState` initialisers so
   // user edits are never overwritten by a later re-read of the same params.
+  //
+  // MUS-77: `slotId` is the new slot-anchored entry point from the gig-detail
+  // `+` CTA. When present and the viewer organises the slot's gig, the
+  // subsequent `gigs.getSlotById` query resolves the slot's gig + genre and
+  // the effect below seeds the form. When the viewer doesn't own the slot
+  // (or the slot is missing), the server returns NOT_FOUND and the form
+  // stays blank — the ownership gate is entirely server-side.
   const rawParams = useLocalSearchParams<{
     kind?: string;
     bandId?: string;
     gigId?: string;
     genre?: string;
+    slotId?: string;
   }>();
   // `useMemo([])` freezes the seed to the first-render params. Even if the
   // caller navigates to the same screen with different params later, the
   // form state is already populated and honours user edits from that point.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const seed = useMemo(() => parsePostRequestParams(rawParams), []);
+
+  // MUS-77: resolve the slot's gig + genre when `slotId` is present. We use
+  // non-suspense `useQuery` (not `useSuspenseQuery`) for two reasons:
+  //   - the seed is a progressive enhancement; a blank form is a correct
+  //     fallback for slot-not-found, not an error surface;
+  //   - `useSuspenseQuery` would blank the whole form during the fetch and
+  //     throw to the QueryBoundary on NOT_FOUND, neither of which is the
+  //     desired behaviour (see `InstrumentAutocomplete` for the same
+  //     deviation, with the same rationale).
+  // The query only fires when we have a positive integer `slotId`; malformed
+  // params short-circuit at the parser boundary and `enabled` stays false.
+  const slotSeedQuery = useQuery({
+    ...trpc.gigs.getSlotById.queryOptions({ slotId: seed.slotId ?? 0 }),
+    enabled: seed.slotId !== null,
+    // Ownership failures land as `NOT_FOUND` — don't retry those. A pasted
+    // URL with someone else's slot should fall back to a blank form
+    // immediately, not after three silent retries.
+    retry: false,
+  });
 
   const myBands = useMemo(
     () => filterMyBands(allBands, me.id),
@@ -152,6 +183,11 @@ function PostRequestForm() {
   // explicit `gigId` wins (only if the viewer actually organises that gig —
   // the gig-side `+` is rendered owner-only, but a pasted URL shouldn't bypass
   // that check), otherwise fall back to the "only one gig" convenience.
+  //
+  // MUS-77: when `slotId` is present, the slot-seed effect below overrides
+  // this initial value once the `getSlotById` fetch resolves. The initial
+  // state still falls back to the "only one gig" convenience so the form
+  // isn't momentarily blank while the slot query is in flight.
   const [selectedGigId, setSelectedGigId] = useState<number | null>(
     seed.gigId !== null && myGigs.some((g) => g.id === seed.gigId)
       ? seed.gigId
@@ -162,6 +198,21 @@ function PostRequestForm() {
   const [gigPickerOpen, setGigPickerOpen] = useState(false);
   const [setLength, setSetLength] = useState("");
   const [feeOffered, setFeeOffered] = useState("");
+  // MUS-77: genre requirement seeded from the slot. The display stays
+  // visible on the `band-for-gig-slot` sub-form so the user can confirm
+  // what they're posting against; clearing it removes the genre filter from
+  // the submitted payload. A full genre picker is out of scope for this
+  // ticket (tracked separately in the MUS-103 follow-up) — the seeded value
+  // can only be cleared, not replaced, from this screen.
+  const [seededGenre, setSeededGenre] = useState<{
+    id: number;
+    slug: string;
+    name: string;
+  } | null>(null);
+  // Tracks whether we've already applied the one-shot slot seed. Once true
+  // the effect no-ops, so subsequent refetches (e.g. React Query background
+  // revalidation) can't stomp on user edits.
+  const [slotSeedApplied, setSlotSeedApplied] = useState(false);
 
   // gig-for-band form state (reuses `selectedBandId` / `bandPickerOpen` so
   // the band picker widget doesn't need a second copy).
@@ -196,6 +247,33 @@ function PostRequestForm() {
   // Tracks which request was just created so we can show the suggestion card
   // keyed on that specific id before navigating away.
   const [createdRequestId, setCreatedRequestId] = useState<number | null>(null);
+
+  // MUS-77: once the slot seed query resolves successfully, apply it to the
+  // form once. We switch `kind` to `band-for-gig-slot`, select the seeded
+  // gig, and pre-fill the genre. The `slotSeedApplied` guard makes this a
+  // one-shot — background refetches won't replay the seed over a user who's
+  // since changed kind or gig.
+  //
+  // Failures (slot missing, or caller isn't the organiser) land on
+  // `slotSeedQuery.error`; we do nothing in that case so the form stays
+  // blank / default-filled. That's the ownership-gate fallback.
+  const slotSeedData = slotSeedQuery.data;
+  useEffect(() => {
+    if (slotSeedApplied) return;
+    if (!slotSeedData) return;
+    // Only apply when the caller's gig list includes the seeded gig. If not,
+    // the picker would show a stale selection with nothing to render — skip
+    // the seed and leave the user to pick manually. In practice this
+    // matches the server-side gate (the slot's gig is the caller's, so it
+    // should be in `myGigs`), but keeping the double check makes the
+    // failure modes graceful if `listMine` is temporarily stale.
+    const gigInList = myGigs.some((g) => g.id === slotSeedData.gigId);
+    if (!gigInList) return;
+    setKind("band-for-gig-slot");
+    setSelectedGigId(slotSeedData.gigId);
+    setSeededGenre(slotSeedData.genre);
+    setSlotSeedApplied(true);
+  }, [slotSeedApplied, slotSeedData, myGigs]);
 
   const createRequest = useMutation(
     trpc.requests.create.mutationOptions({
@@ -274,6 +352,11 @@ function PostRequestForm() {
           gigId: selectedGigId,
           setLength,
           feeOffered,
+          // MUS-77: surface the seeded genre filter through to the server.
+          // `null` means "open to any band" (the server falls back to
+          // letting any band EoI — see the MUS-103 EoI hard-gate for the
+          // enforcement path).
+          genreId: seededGenre?.id ?? null,
         }),
       );
       return;
@@ -438,6 +521,8 @@ function PostRequestForm() {
           setSetLength={setSetLength}
           feeOffered={feeOffered}
           setFeeOffered={setFeeOffered}
+          seededGenre={seededGenre}
+          onClearGenre={() => setSeededGenre(null)}
           submitting={submitting || createdRequestId !== null}
         />
       ) : kind === "gig-for-band" ? (
@@ -860,6 +945,10 @@ function BandForGigSlotForm(props: {
   setSetLength: (v: string) => void;
   feeOffered: string;
   setFeeOffered: (v: string) => void;
+  // MUS-77: genre seeded from the slot-anchored entry point. Null when the
+  // slot had no genre filter or when the user cleared the chip below.
+  seededGenre: { id: number; slug: string; name: string } | null;
+  onClearGenre: () => void;
   submitting: boolean;
 }) {
   if (!props.hasGigs) {
@@ -938,6 +1027,42 @@ function BandForGigSlotForm(props: {
         <Text style={styles.warning}>
           This gig has no open slots. Pick another gig or add slots first.
         </Text>
+      )}
+
+      {/* MUS-77: genre pre-fill surfaced from the slot-anchored entry point.
+          A full genre picker is out of scope for this ticket — the seeded
+          value is shown read-only with a clear affordance. The user can
+          post without a genre filter by tapping the chip. */}
+      {props.seededGenre && (
+        <>
+          <Text style={styles.label}>Genre</Text>
+          <View style={styles.seededGenreRow}>
+            <View
+              testID="post-request-seeded-genre"
+              style={styles.seededGenreChip}
+              accessibilityLabel={`Genre pre-filled: ${props.seededGenre.name}`}
+            >
+              <Text style={styles.seededGenreChipText}>
+                {props.seededGenre.name}
+              </Text>
+            </View>
+            <Pressable
+              onPress={props.onClearGenre}
+              disabled={props.submitting}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Clear genre filter"
+              testID="post-request-seeded-genre-clear"
+              style={({ pressed }) => [
+                styles.seededGenreClear,
+                pressed && styles.buttonPressed,
+                props.submitting && styles.buttonDisabled,
+              ]}
+            >
+              <Ionicons name="close" size={16} color="#c8c8d0" />
+            </Pressable>
+          </View>
+        </>
       )}
 
       <Text style={styles.label}>Set length in minutes (optional)</Text>
@@ -1548,4 +1673,37 @@ const styles = StyleSheet.create({
   chipPressed: { opacity: 0.7 },
   chipText: { color: "#fff", fontSize: 13 },
   helperText: { color: "#7a7a85", fontSize: 13, marginTop: 4 },
+  // MUS-77: seeded-genre display row. Reuses the chip visual language from
+  // the night-at-venue dates list but rendered solo (the seeded genre is
+  // always a single row) and paired with a small clear button so the user
+  // can opt out of the filter without needing a full picker.
+  seededGenreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  seededGenreChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#22222a",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#6c63ff",
+  },
+  seededGenreChipText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  seededGenreClear: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#22222a",
+  },
 });

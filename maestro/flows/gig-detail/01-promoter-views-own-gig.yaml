@@ -133,12 +133,43 @@ appId: com.musicians.app
     id: "post-request-cta-gig-slot"
 
 # Tap the CTA. Maestro picks the first visible match (the first open slot in
-# set order — Set 1). The HANDOFF confirms this navigates to
+# set order — Set 1, which is the slot tagged "Rock" per the seedE2E fixture).
+# The HANDOFF confirms this navigates to
 # /post-request?kind=band-for-gig-slot&slotId=<id>.
 - tapOn:
     id: "post-request-cta-gig-slot"
 
-# Assert the Post Request screen opened. This ticket only verifies navigation
-# — the MUS-77 flow will assert slotId pre-fill. Use the visible screen title
-# to confirm we arrived.
+# Assert the Post Request screen opened.
 - assertVisible: "Post request"
+
+# MUS-77: assert the slotId-driven pre-fills. The slot seed query resolves
+# shortly after the screen mounts; wait explicitly for the seeded-genre chip
+# before probing individual fields. The chip is only rendered after the seed
+# has been applied, so its visibility doubles as a synchronisation point
+# (the kind + gig pre-fills are set in the same effect, so they're safe to
+# assert straight after).
+- extendedWaitUntil:
+    visible:
+      id: "post-request-seeded-genre"
+    timeout: 8000
+
+# Assert the kind is pre-selected to `band-for-gig-slot`. The kind option
+# label renders verbatim in the list; its selected state is signalled by
+# a checkmark icon + style, but for Maestro the stable signal is that the
+# label text is visible. (It would also be visible if the option existed
+# without being selected — however, the other kinds are still listed too,
+# so this is a weak signal. The stronger signal is the gig pre-fill +
+# genre chip below, which only appear when the band-for-gig-slot kind is
+# active AND the slot seed has been applied.)
+- assertVisible: "Band for a gig slot"
+
+# Assert the gig pre-fill is visible. The band-for-gig-slot sub-form's gig
+# picker renders the selected gig's summary string ("<date> • <venue> •
+# <open>/<total> open"), so "The Corner Stage" appearing inside the Post
+# Request screen (not the gig-detail screen we came from) confirms the
+# gig was auto-selected from the slot's gig_id.
+- assertVisible: "The Corner Stage"
+
+# Assert the seeded genre pill is visible and carries the slot's genre name.
+# The seedE2E fixture tags slot 0 with `rock` → name `Rock`.
+- assertVisible: "Rock"

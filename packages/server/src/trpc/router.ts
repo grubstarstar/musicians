@@ -16,6 +16,7 @@ import {
   countOpenSlots,
   createGig,
   getGigById,
+  getGigSlotForSeed,
   hasPromoterRole,
   listGigsByOrganiser,
 } from '../gigs/queries.js';
@@ -322,6 +323,34 @@ export const appRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Gig not found' });
         }
         return gig;
+      }),
+    // MUS-77: slot-anchored seed lookup for the post-request form. Returns
+    // the slot's owning gig id + optional genre so the mobile form can
+    // pre-fill `band-for-gig-slot` state from a single URL param.
+    //
+    // Ownership gate: we collapse "slot missing" and "caller doesn't own the
+    // gig" into a single NOT_FOUND so a non-organiser pasting someone else's
+    // slotId can't fingerprint which slots exist. This matches the
+    // membership-gate pattern used by `bands.getById` / `promoterGroups.get`.
+    getSlotById: protectedProcedure
+      .input(z.object({ slotId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const userId = Number(ctx.user.id);
+        const slot = await getGigSlotForSeed(input.slotId);
+        if (!slot || slot.organiserUserId !== userId) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Slot not found',
+          });
+        }
+        // Explicit projection — strip `organiserUserId` from the response so
+        // the gate isn't leaked to the client, only the fields the form
+        // actually needs.
+        return {
+          slotId: slot.slotId,
+          gigId: slot.gigId,
+          genre: slot.genre,
+        };
       }),
   }),
   requests: router({
