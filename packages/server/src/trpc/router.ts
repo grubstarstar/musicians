@@ -430,7 +430,7 @@ export const appRouter = router({
           if (!gig) {
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Gig not found' });
           }
-          if (gig.organiserUserId !== userId) {
+          if (gig.organiser.id !== userId) {
             throw new TRPCError({
               code: 'FORBIDDEN',
               message: 'Only the gig organiser may post a band-for-gig-slot request',
@@ -994,7 +994,7 @@ export const appRouter = router({
           if (!gig) {
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Gig not found' });
           }
-          if (gig.organiserUserId !== userId) {
+          if (gig.organiser.id !== userId) {
             throw new TRPCError({
               code: 'FORBIDDEN',
               message: 'You may only offer gigs that you organise',

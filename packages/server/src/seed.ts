@@ -482,8 +482,18 @@ if (!adminRow) {
         status: 'open',
       })
       .returning({ id: gigs.id });
+    // MUS-104: tag the headline slot with a genre so the gig detail screen
+    // always has at least one visible genre pill to assert on in e2e. Rock
+    // is seeded unconditionally by the genres taxonomy (MUS-103). Falls back
+    // to `genre_id = null` if rock isn't found for some reason — the slot
+    // still inserts cleanly (the column is nullable).
+    const [rockGenre] = await db
+      .select({ id: genres.id })
+      .from(genres)
+      .where(eq(genres.slug, 'rock'))
+      .limit(1);
     await db.insert(gigSlots).values([
-      { gig_id: gig.id, set_order: 0, fee: 25000 },
+      { gig_id: gig.id, set_order: 0, fee: 25000, genre_id: rockGenre?.id ?? null },
       { gig_id: gig.id, set_order: 1, fee: 30000 },
       { gig_id: gig.id, set_order: 2, fee: 40000 },
     ]);
