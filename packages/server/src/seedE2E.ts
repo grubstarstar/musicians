@@ -4,6 +4,9 @@ import { db } from './db.js';
 import {
   bandMembers,
   bands,
+  genres,
+  gigSlots,
+  gigs,
   musicianProfiles,
   promoterGroups,
   promoterGroupsVenues,
@@ -29,6 +32,15 @@ import {
  *       `promoter1` linked to `Test Promotions`; `Test Promotions` linked to
  *       `Test Hall` — so `promoterGroups.listMine` returns one group with one
  *       venue for `promoter1`.
+ *
+ *   - `gig-detail` (MUS-104):
+ *       venue `The Corner Stage` (second venue, deliberately distinct from
+ *       Test Hall so the flow's `tapOn: "The Corner Stage"` selector is
+ *       unambiguous)
+ *       gig organised by `promoter1` at `The Corner Stage`, status=open,
+ *       datetime +21 days; three open slots (set_order 0/1/2); slot 0 tagged
+ *       with the `rock` genre so the detail screen has a visible genre pill
+ *       to assert on.
  *
  *   - `onboarding` (MUS-91):
  *       user `newbie` (`abcd1234`) with `roles: []`
@@ -167,6 +179,51 @@ export async function seedE2E(): Promise<void> {
     promoter_group_id: testPromotions.id,
     venue_id: testHall.id,
   });
+
+  // --- gig-detail fixture (MUS-104) ---
+  //
+  // The gig-detail Maestro journey logs in as promoter1, taps a gig on
+  // PromoterHome's "My Gigs" surface, and asserts the detail screen shows
+  // the venue, datetime, a genre pill on slot 0, and a `+` CTA on an open
+  // slot. That needs:
+  //   venue `The Corner Stage` (distinct from Test Hall so the flow's
+  //     `tapOn: "The Corner Stage"` selector is unambiguous)
+  //   gig organised by promoter1 at that venue, status=open, datetime +21d
+  //   three open slots (set_order 0/1/2), with slot 0 tagged `rock`
+  //
+  // `genres` rows are seeded by the migration itself (0015_genres_taxonomy)
+  // and deliberately excluded from `/test/reset` truncation per MUS-103, so
+  // the `rock` lookup below always finds the canonical row.
+  const [cornerStage] = await db
+    .insert(venues)
+    .values({ name: 'The Corner Stage', address: '123 Swanston St, Melbourne VIC 3000' })
+    .returning({ id: venues.id });
+
+  const gigDatetime = new Date();
+  gigDatetime.setUTCDate(gigDatetime.getUTCDate() + 21);
+  gigDatetime.setUTCHours(20, 0, 0, 0);
+  const [cornerStageGig] = await db
+    .insert(gigs)
+    .values({
+      datetime: gigDatetime,
+      venue_id: cornerStage.id,
+      doors: '7pm',
+      organiser_user_id: promoter1.id,
+      status: 'open',
+    })
+    .returning({ id: gigs.id });
+
+  const [rockGenre] = await db
+    .select({ id: genres.id })
+    .from(genres)
+    .where(eq(genres.slug, 'rock'))
+    .limit(1);
+
+  await db.insert(gigSlots).values([
+    { gig_id: cornerStageGig.id, set_order: 0, fee: 25000, genre_id: rockGenre?.id ?? null },
+    { gig_id: cornerStageGig.id, set_order: 1, fee: 30000 },
+    { gig_id: cornerStageGig.id, set_order: 2, fee: 40000 },
+  ]);
 
   // --- onboarding fixture (MUS-91) ---
   //
