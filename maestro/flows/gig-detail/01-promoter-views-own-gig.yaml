@@ -96,12 +96,15 @@ appId: com.musicians.app
 # Assert the venue name in the header (visible text, most resilient selector).
 - assertVisible: "The Corner Stage"
 
-# Assert a datetime is rendered in the header. The seeded gig has a specific
-# datetime; we assert on the year ("2025" or "2026") as the minimal stable
-# substring — avoids locale/format assumptions while still verifying that
-# the datetime element rendered at all.
+# Assert a datetime is rendered in the header. The fixture gig is always 21
+# days in the future, so the formatted string in the header is a short form
+# like "Sat, May 16 · 6:00 AM" (no year — the formatter omits it when the
+# date is near-term). Match the month abbreviation ("May" for the current
+# fixture month) via a regex on the leading day-of-week + month — stable
+# enough to catch "the datetime element rendered" without pinning the
+# exact date of any particular run.
 - assertVisible:
-    text: "202.*"
+    text: ".*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec).*"
 
 # Assert the first slot row (Set 1) is visible.
 - assertVisible:
