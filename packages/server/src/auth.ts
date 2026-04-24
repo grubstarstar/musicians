@@ -7,10 +7,14 @@ const SECRET = new TextEncoder().encode(
 const COOKIE_NAME = 'auth_token';
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days in seconds
 
-// JWT payload shape. `roles` (MUS-86) is carried in the token so mobile and
-// web clients can read them without an extra `/me` round-trip. Defaults to
-// an empty array on tokens minted before this change — `verifyToken`
-// normalises missing/malformed roles to `[]` for forward compatibility.
+// JWT payload shape. `roles` (MUS-86) is carried in the token as a login-time
+// snapshot so the `/login` and `/register` responses can echo it back to the
+// client without an extra DB round-trip. Server-side it is NOT authoritative
+// — since MUS-101 the context user and `/api/auth/me` re-read `users.roles`
+// from the DB on every authenticated request via `resolveAuthedUser`. The
+// claim stays in the token only for the login response contract and for
+// forward-compatibility with older clients that might parse it. `verifyToken`
+// normalises missing/malformed roles to `[]`.
 export interface AuthTokenPayload {
   sub: string;
   username: string;
