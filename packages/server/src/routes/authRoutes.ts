@@ -3,7 +3,8 @@ import bcrypt from 'bcrypt';
 import { eq } from 'drizzle-orm';
 import { db } from '../db.js';
 import { users } from '../schema.js';
-import { signToken, verifyToken, buildSetCookieHeader, buildClearCookieHeader, getTokenFromRequest } from '../auth.js';
+import { signToken, buildSetCookieHeader, buildClearCookieHeader } from '../auth.js';
+import { resolveAuthedUser } from '../authedUser.js';
 
 // Shared cost factor for any bcrypt hashing we do on the auth routes. Login's
 // timing-attack dummy hash (`$2b$12$...`) is also at cost 12 — keep these in
@@ -163,19 +164,21 @@ authRoutes.post('/logout', (c) => {
 });
 
 authRoutes.get('/me', async (c) => {
-  // Accept either an Authorization bearer token (mobile) or the auth_token
-  // cookie (web). `getTokenFromRequest` checks both in that order.
-  const token = getTokenFromRequest(c.req.raw);
-  if (!token) {
+  // MUS-101: roles come from the DB, not the JWT payload. The JWT carries a
+  // snapshot at sign-time which goes stale the moment `onboarding.setRole` or
+  // `users.addRole` modifies `users.roles`. `resolveAuthedUser` re-reads the
+  // row by `token.sub` so the next cold-launch `AuthContext.fetchMe` sees
+  // whatever roles the user actually has right now.
+  //
+  // It also returns null when `sub` refers to a deleted user (same JWT, row
+  // gone) — we reject with 401 rather than trusting the stale identity. Same
+  // helper + same behaviour for bearer (mobile) and cookie (web) callers.
+  const user = await resolveAuthedUser(c.req.raw);
+  if (!user) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const payload = await verifyToken(token);
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-
-  return c.json({ username: payload.username, roles: payload.roles });
+  return c.json({ username: user.username, roles: user.roles });
 });
 
 export default authRoutes;
