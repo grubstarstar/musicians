@@ -240,7 +240,7 @@ function GigHomeRow({
       testID={`promoter-gig-row-${gig.id}`}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Open gig at ${gig.venue.name}`}
+      accessibilityLabel={gig.venue.name}
       style={({ pressed }) => [
         styles.groupRow,
         !isLast && styles.groupRowBorder,
