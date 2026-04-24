@@ -47,8 +47,37 @@ One commit on your agent branch that adds or extends exactly one flow file match
 
 1. **Ticket has `no-e2e` label** (or `journey: none`): stop. Post a completion comment saying you skipped — no flow needed. Do not transition Jira (orchestrator handles that). Do not commit.
 2. **`flow file:` says `extend NN-existing.yaml`**: read that file and the sibling flows in the journey, add steps (or inject new assertions) that exercise the new behaviour. Keep the original steps intact.
-3. **`flow file:` says `NN-name.yaml`** (new file, existing journey): create `maestro/flows/<journey>/NN-name.yaml`. Pick `NN` as the next unused prefix in that journey. Re-use helpers under `maestro/helpers/` for login/logout/reset.
+3. **`flow file:` says `NN-name.yaml`** (new file, existing journey): **first apply the "extend vs create" rubric below.** If the rubric says to extend, do that and note in your completion comment that you deviated from the ticket's `flow file:` directive and why. Only create a new file if the rubric says to create. When creating, pick `NN` as the next unused prefix in the journey and re-use helpers under `maestro/helpers/` for login / logout / reset / launch-to-login.
 4. **`journey:` says `new: <name>`**: create `maestro/flows/<journey>/01-<flow>.yaml` as the first flow of a new journey directory.
+
+## Extend vs create — default to extend
+
+Maestro flows in a journey run in order, and later flows can assume earlier ones ran. Accreting small additions into an existing flow is usually cheaper than spawning a new file, because a new file re-runs the signup / reset / login prologue the sibling flow already performed. The test suite got to 6 onboarding files with 20+ lines of duplicated cold-start prologue before MUS-102 factored `launch-to-login.yaml` out and squashed the accretion. Don't cause the next MUS-102.
+
+**Default:** extend the most natural sibling flow. Only create a new file when the rubric below says so.
+
+### Rubric
+
+Extend an existing flow when **all** of these are true:
+- The new behaviour is reached from a screen already visited by an existing flow in the target journey.
+- The new behaviour tests an extension of an existing screen (a new field, a new affordance, a new guard on an existing form), not a brand-new screen with its own entry path.
+- Appending the new steps keeps the existing flow under ~200 lines and its narrative coherent (one user, one session, one user-visible journey).
+
+Create a new file when **any** of these are true:
+- The new behaviour needs a different seeded user / different fixture than any existing flow in the journey. (A new user means a new login; splitting the file is cleaner than context-switching mid-flow.)
+- The new behaviour is on a screen the journey hasn't visited yet, reached via a path no existing flow traverses.
+- Extending would push an existing flow past ~200 lines or fracture its "one narrative" shape.
+- The `flow file:` directive says new AND the rubric's "extend" criteria don't all apply — ticket authors sometimes default to "new file" out of habit; trust the rubric over the directive, but explain the deviation in your completion comment.
+
+### Worked example
+
+Ticket adds a "remember me" checkbox to the existing login screen. The `onboarding/` journey already covers login in multiple flows.
+
+- Apply the rubric: new behaviour is on an **existing** screen (login), reached via the **same** path as existing flows, tests a **field extension** (a new checkbox), and the shortest-sibling flow is well under 200 lines.
+- All three "extend" conditions are true → pick the cheapest existing flow that already touches the login screen (`02-onboarding-musician.yaml` or similar), append the checkbox toggle + assertion after the existing login step, and keep everything else intact.
+- Do NOT spin up `07-remember-me.yaml` just because the login screen is "a concept worth its own file". A new file would re-run the full cold-start prologue plus signup — all duplicated work.
+
+By contrast, a ticket that adds a whole new password-reset journey (reached via a "Forgot password" link, using a different email delivery path) is a new-flow case: different entry point, different fixture (seeded reset token), different narrative. That's a new file (or a new journey dir, if it's big).
 
 # Selector rules (iOS-first)
 
