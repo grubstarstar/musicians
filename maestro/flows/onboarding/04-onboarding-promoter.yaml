@@ -13,7 +13,8 @@ appId: com.musicians.app
 #   - Launch with clearKeychain to wipe any stale token.
 #   - Log in as newbie (roles=[] → app guard redirects to /onboarding/role-picker).
 #   - Assert the role-picker screen is visible.
-#   - Verify Next is disabled before any tile is selected (no-op tap guard).
+#     (MUS-102: the "Next disabled before any tile is selected" guard on the
+#     role-picker is covered by flow 02 — not re-asserted here.)
 #   - Tap "As a promoter" tile.
 #   - Confirm "As a promoter" is visible and Next becomes tappable.
 #   - Tap Next and assert we land on the promoter step-2 screen.
@@ -37,29 +38,10 @@ appId: com.musicians.app
 # the role-picker entirely, failing the AC checks below.
 - runFlow: ../../helpers/reset.yaml
 
-# Re-launch the app with clearKeychain so any stale SecureStore token from a
-# previous run is wiped before the auth context fires. clearKeychain: true does
-# NOT wipe the dev-client's saved server URL (NSUserDefaults), so Metro survives.
-- launchApp:
-    clearKeychain: true
-
-# Allow the app's animation/initialization phase to complete before querying
-# the accessibility tree. Without this, XCTest can return kAXErrorInvalidUIElement
-# (HTTP 500) and crash the subsequent conditional-logout check.
-- waitForAnimationToEnd
-
-# Belt-and-braces: if some other state survives (e.g. a previous run that did
-# not use keychain storage), log out before logging in as newbie.
-- runFlow:
-    when:
-      visible: "Open profile menu"
-    file: ../../helpers/logout.yaml
-
-# Wait for the login screen. clearKeychain wiped the token so the app shows
-# the login screen. Cold bundle fetch can take 20-40s.
-- extendedWaitUntil:
-    visible: "Sign in to continue"
-    timeout: 60000
+# Cold-start prologue: clear keychain, settle animations, defensive logout,
+# wait for the login screen. See helpers/launch-to-login.yaml for the full
+# rationale of each step.
+- runFlow: ../../helpers/launch-to-login.yaml
 
 # Log in as newbie. Flow 01 created this account with password "abcd1234".
 # After login, newbie has roles=[] so the (app)/_layout.tsx guard redirects
@@ -80,14 +62,11 @@ appId: com.musicians.app
     timeout: 30000
 
 # Belt-and-braces: confirm we are on the role-picker via its root testID.
+# MUS-102: the "Next disabled before any tile is selected" guard is covered
+# by flow 02 (same screen, same behaviour) — not re-asserted here to avoid
+# duplicate coverage of the role-picker contract.
 - assertVisible:
     id: "onboarding-role-picker"
-
-# Verify client-side guard: Next must be disabled before any tile is selected.
-# A tap on a disabled Pressable is a no-op — screen remains on the role-picker.
-- tapOn:
-    id: "onboarding-role-next"
-- assertVisible: "What brings you here?"
 
 # Tap the "As a promoter" radio tile. Prefer visible text (most resilient
 # selector) — the child text node renders the label reliably on iOS.
