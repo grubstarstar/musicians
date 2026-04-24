@@ -176,6 +176,25 @@ git merge --ff-only <agent-branch>
 
 This keeps the `main` history linear (every ticket is one commit, no merge commits).
 
+### Re-spawning qa-automate mid-pipeline can start it from main, not the feature branch
+When qa-test flags a flow bug and you re-spawn `qa-automate` to fix it, the harness sometimes creates the agent's worktree from `main` instead of from the feature branch you've been building on. The agent's fix commit then sits on top of plain `main`, not on top of dev's merge + the earlier qa-automate merge. If you then `git merge --no-ff <agent-branch>` onto the feature branch, the merge looks like a massive deletion — it wipes out every file the feature branch added that isn't also on main.
+
+Before merging any qa-automate fix-up commit, sanity-check what it's actually bringing in:
+
+```
+git diff feature/<ticket> worktree-agent-<id> --stat
+```
+
+- If the output lists just the one or two flow files you expected, merge with `--no-ff`.
+- If the output is huge with files shown as `-<big number>` lines (mass deletions), **stop** — the agent's commit is on the wrong baseline. Don't merge. Cherry-pick the single file change instead:
+
+```
+git checkout worktree-agent-<id> -- maestro/flows/<journey>/<flow>.yaml
+git commit -am "MUS-NN: <short description>"
+```
+
+First-pass qa-automate (and every dev-agent pass) normally cuts from the right branch — the issue is specific to qa-automate re-spawns. See the `feedback_qa_test_harness_worktree_baseline.md` memory for the related qa-test variant (agent skips with "HEAD is stale").
+
 ### tRPC conventions reminder
 - **Always shape returns.** Use `db.select({ ...explicit projection })` or `.map(row => ({ ... }))`. Never `db.select().from(table)` without a projection — Drizzle row types leak snake_case column names to the client if you do.
 - **Coerce `ctx.user.id` once at the procedure boundary**: `const userId = Number(ctx.user.id)`. The JWT `sub` is a string.

@@ -76,6 +76,11 @@ Follow whatever is in CLAUDE.md for this project. Beyond that:
 - Name things for what they do, not how they do it
 - If it's not clear why code is written a certain way then comment appropriately so a human can understand why something was done the way it was
 
+## Mobile specifics (React Native)
+
+- Any `TextInput` that is a search field, picker, or otherwise driven by Maestro `inputText` **must** set `contextMenuHidden`. Maestro's automated typing triggers the iOS edit menu (Paste / Select / Select All / AutoFill) as a floating overlay — that overlay sits on top of nearby tappable elements (e.g. a suggestion row under the search input) and causes subsequent `tapOn` steps to land on the menu instead of the intended target. `contextMenuHidden` prevents the menu from ever appearing; it's a near-zero-cost UX win on small search inputs and removes a whole class of automation flakiness.
+- When you need to expose a selected value through an `accessibilityRole="button"` `Pressable`, set the `accessibilityLabel` to the **value itself** rather than a prefixed phrase like `"Instrument: Bass Guitar"`. iOS suppresses child `Text` a11y when the parent Pressable has a button role + explicit label, so Maestro's `assertVisible: "<value>"` substring match against the label prefix can fail unpredictably. Keep the label equal to the visible value.
+
 ## Unit tests
 
 After implementing any complex pure functions, write unit tests for them. Follow these rules:
